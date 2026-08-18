@@ -20,9 +20,32 @@ from app.api.deps import require_platform_admin
 from app.core.config import settings
 from app.db.platform import get_platform_db
 from app.models.platform import School, Subscription
-from app.schemas.billing import CheckoutSessionResponse
+from app.schemas.billing import CheckoutSessionResponse, SubscriptionStatusUpdate
 
 router = APIRouter(prefix="/platform", tags=["billing"])
+
+
+@router.patch(
+    "/schools/{school_id}/subscription",
+    dependencies=[Depends(require_platform_admin)],
+)
+def set_subscription_status(
+    school_id: uuid.UUID,
+    payload: SubscriptionStatusUpdate,
+    platform_db: Session = Depends(get_platform_db),
+) -> dict:
+    """Manual override, mirroring what the Stripe webhook would otherwise do
+    (ARCHITECTURE.md §4) — needed since Stripe isn't wired up for every
+    school yet, and it's what the ops console uses to unblock a school
+    without a real payment.
+    """
+    subscription = platform_db.query(Subscription).filter_by(school_id=school_id).first()
+    if subscription is None:
+        raise HTTPException(status_code=404, detail="No subscription found for this school")
+
+    subscription.status = payload.status
+    platform_db.commit()
+    return {"status": "updated", "subscription_status": subscription.status}
 
 
 @router.post(

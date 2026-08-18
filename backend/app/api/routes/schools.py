@@ -15,9 +15,32 @@ from app.db.platform import get_platform_db
 from app.db.tenant import get_tenant_engine, get_tenant_sessionmaker, provision_tenant_database
 from app.models.platform import School, Subscription
 from app.models.tenant import StaffUser, TenantBase
-from app.schemas.school import SchoolEnrollRequest, SchoolOut
+from app.schemas.school import SchoolEnrollRequest, SchoolOut, SchoolWithSubscriptionOut
 
 router = APIRouter(prefix="/platform/schools", tags=["platform"], dependencies=[Depends(require_platform_admin)])
+
+
+@router.get("", response_model=list[SchoolWithSubscriptionOut])
+def list_schools(platform_db: Session = Depends(get_platform_db)) -> list[dict]:
+    """Powers the ops console (ARCHITECTURE.md §10) — there was previously
+    no way to see enrolled schools at all short of querying the DB directly.
+    """
+    schools = platform_db.query(School).order_by(School.created_at.desc()).all()
+    result = []
+    for school in schools:
+        subscription = platform_db.query(Subscription).filter_by(school_id=school.id).first()
+        result.append(
+            {
+                "id": school.id,
+                "name": school.name,
+                "slug": school.slug,
+                "status": school.status,
+                "created_at": school.created_at,
+                "subscription_status": subscription.status if subscription else "none",
+                "subscription_plan": subscription.plan if subscription else "none",
+            }
+        )
+    return result
 
 
 @router.post("", response_model=SchoolOut, status_code=201)

@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Platform Ops Console</title>
+<style>
+  :root {
+    --bg: #f5f6fa;
+    --panel: #ffffff;
+    --border: #e1e4ea;
+    --text: #1a1d29;
+    --text-muted: #6b7280;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --danger: #dc2626;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .key-row { display: flex; align-items: center; gap: 8px; }
+  header input[type="password"], header input[type="text"] {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    width: 220px;
+  }
+  main { max-width: 1000px; margin: 0 auto; padding: 24px 32px 64px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .panel h2 { font-size: 15px; margin: 0 0 16px; color: var(--text); }
+  .panel h2 .hint { font-weight: 400; color: var(--text-muted); font-size: 12px; }
+  form.enroll { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  form.enroll label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+  form.enroll input {
+    width: 100%;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  form.enroll .full { grid-column: 1 / -1; }
+  button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+  button.secondary:hover { background: #eef2ff; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--text-muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .badge.active { background: #dcfce7; color: #166534; }
+  .badge.trialing { background: #fef9c3; color: #854d0e; }
+  .badge.past_due { background: #ffedd5; color: #9a3412; }
+  .badge.canceled { background: #fee2e2; color: #991b1b; }
+  .badge.none { background: #e5e7eb; color: #4b5563; }
+  .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  select { padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+  #log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    background: #0f1117;
+    color: #d1d5db;
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    max-height: 260px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #log .ok { color: #86efac; }
+  #log .err { color: #fca5a5; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .status-dot.set { background: #22c55e; }
+  .status-dot.unset { background: #d1d5db; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Platform Ops Console</h1>
+  <div class="key-row">
+    <span id="key-indicator"><span class="status-dot unset"></span>No admin key set</span>
+    <input type="password" id="admin-key" placeholder="X-Platform-Admin-Key" />
+    <button class="secondary" onclick="saveKey()">Save key</button>
+  </div>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>Enroll a school <span class="hint">POST /platform/schools</span></h2>
+    <form class="enroll" onsubmit="return enrollSchool(event)">
+      <div>
+        <label>School name</label>
+        <input required id="f-name" placeholder="Example High" />
+      </div>
+      <div>
+        <label>Slug</label>
+        <input required id="f-slug" placeholder="example-high" pattern="[a-z][a-z0-9-]{1,60}" />
+      </div>
+      <div>
+        <label>Admin name</label>
+        <input required id="f-admin-name" placeholder="Jane Admin" />
+      </div>
+      <div>
+        <label>Admin email</label>
+        <input required type="email" id="f-admin-email" placeholder="jane@example-high.example.com" />
+      </div>
+      <div class="full">
+        <label>Admin temporary password (min 8 chars)</label>
+        <input required minlength="8" id="f-admin-password" placeholder="changeme123" />
+      </div>
+      <div class="full">
+        <button type="submit">Enroll school</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <h2>Schools <span class="hint">GET /platform/schools</span></h2>
+    <div id="schools-container">
+      <p class="empty">Set your admin key above, then click Refresh.</p>
+    </div>
+    <div style="margin-top: 12px;">
+      <button class="secondary" onclick="loadSchools()">Refresh</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Activity log</h2>
+    <div id="log">Nothing yet.</div>
+  </div>
+</main>
+
+<script>
+  const STATUSES = ["trialing", "active", "past_due", "canceled"];
+
+  function getKey() {
+    return localStorage.getItem("platform_admin_key") || "";
+  }
+
+  function saveKey() {
+    const value = document.getElementById("admin-key").value.trim();
+    if (!value) return;
+    localStorage.setItem("platform_admin_key", value);
+    document.getElementById("admin-key").value = "";
+    updateKeyIndicator();
+    log("Admin key saved locally (not sent anywhere except as a request header).", true);
+  }
+
+  function updateKeyIndicator() {
+    const has = !!getKey();
+    document.getElementById("key-indicator").innerHTML = has
+      ? '<span class="status-dot set"></span>Admin key set'
+      : '<span class="status-dot unset"></span>No admin key set';
+  }
+
+  function log(message, ok) {
+    const el = document.getElementById("log");
+    const line = document.createElement("div");
+    line.className = ok ? "ok" : "err";
+    const ts = new Date().toLocaleTimeString();
+    line.textContent = `[${ts}] ${message}`;
+    if (el.textContent === "Nothing yet.") el.textContent = "";
+    el.prepend(line);
+  }
+
+  async function apiFetch(path, options = {}) {
+    const key = getKey();
+    const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
+    if (key) headers["X-Platform-Admin-Key"] = key;
+    const response = await fetch(path, Object.assign({}, options, { headers }));
+    const text = await response.text();
+    let body;
+    try { body = JSON.parse(text); } catch { body = text; }
+    if (!response.ok) {
+      const detail = typeof body === "object" ? JSON.stringify(body) : body;
+      throw new Error(`${response.status} ${detail}`);
+    }
+    return body;
+  }
+
+  async function enrollSchool(event) {
+    event.preventDefault();
+    const payload = {
+      name: document.getElementById("f-name").value,
+      slug: document.getElementById("f-slug").value,
+      admin_name: document.getElementById("f-admin-name").value,
+      admin_email: document.getElementById("f-admin-email").value,
+      admin_temp_password: document.getElementById("f-admin-password").value,
+    };
+    try {
+      const school = await apiFetch("/platform/schools", { method: "POST", body: JSON.stringify(payload) });
+      log(`Enrolled "${school.name}" (${school.slug}) — tenant database provisioned.`, true);
+      event.target.reset();
+      loadSchools();
+    } catch (e) {
+      log(`Enroll failed: ${e.message}`, false);
+    }
+    return false;
+  }
+
+  function badgeHtml(status) {
+    const cls = STATUSES.includes(status) ? status : "none";
+    return `<span class="badge ${cls}">${status}</span>`;
+  }
+
+  async function loadSchools() {
+    const container = document.getElementById("schools-container");
+    try {
+      const schools = await apiFetch("/platform/schools");
+      if (schools.length === 0) {
+        container.innerHTML = '<p class="empty">No schools enrolled yet.</p>';
+        return;
+      }
+      const rows = schools.map((s) => {
+        const options = STATUSES.map(
+          (st) => `<option value="${st}" ${st === s.subscription_status ? "selected" : ""}>${st}</option>`
+        ).join("");
+        return `
+          <tr>
+            <td><strong>${s.name}</strong><br/><span style="color:var(--text-muted)">${s.slug}</span></td>
+            <td>${badgeHtml(s.subscription_status)}<br/><span style="color:var(--text-muted); font-size:11px;">${s.subscription_plan}</span></td>
+            <td>${new Date(s.created_at).toLocaleDateString()}</td>
+            <td>
+              <div class="row-actions">
+                <select id="status-${s.id}">${options}</select>
+                <button class="secondary" onclick="applyStatus('${s.id}', '${s.name}')">Apply</button>
+                <button class="secondary" onclick="createCheckout('${s.id}', '${s.name}')">Checkout link</button>
+              </div>
+            </td>
+          </tr>`;
+      }).join("");
+      container.innerHTML = `
+        <table>
+          <thead><tr><th>School</th><th>Subscription</th><th>Enrolled</th><th>Actions</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    } catch (e) {
+      container.innerHTML = `<p class="empty">Failed to load schools: ${e.message}</p>`;
+    }
+  }
+
+  async function applyStatus(schoolId, name) {
+    const select = document.getElementById(`status-${schoolId}`);
+    const status = select.value;
+    try {
+      await apiFetch(`/platform/schools/${schoolId}/subscription`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
+      log(`${name}: subscription set to "${status}".`, true);
+      loadSchools();
+    } catch (e) {
+      log(`${name}: failed to update subscription — ${e.message}`, false);
+    }
+  }
+
+  async function createCheckout(schoolId, name) {
+    try {
+      const result = await apiFetch(`/platform/schools/${schoolId}/billing/checkout-session`, { method: "POST" });
+      log(`${name}: checkout URL — ${result.checkout_url}`, true);
+    } catch (e) {
+      log(`${name}: checkout session failed — ${e.message}`, false);
+    }
+  }
+
+  updateKeyIndicator();
+  if (getKey()) loadSchools();
+</script>
+
+</body>
+</html>

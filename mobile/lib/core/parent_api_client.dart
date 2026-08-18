@@ -8,7 +8,7 @@ import 'api_client.dart';
 /// since a parent's login identity spans every school their children
 /// attend (ARCHITECTURE.md §2/§8), unlike the school-scoped ApiClient.
 class ParentApiClient {
-  static const String baseUrl = ApiClient.baseUrl;
+  static String get baseUrl => ApiClient.baseUrl;
 
   String? _parentToken;
 

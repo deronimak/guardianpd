@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -18,3 +19,13 @@ class SchoolOut(BaseModel):
     name: str
     slug: str
     status: str
+
+
+class SchoolWithSubscriptionOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    status: str
+    created_at: datetime
+    subscription_status: str
+    subscription_plan: str

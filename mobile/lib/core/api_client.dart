@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:http/http.dart' as http;
 
 class ApiException implements Exception {
@@ -14,10 +15,16 @@ class ApiException implements Exception {
 /// Talks to the FastAPI backend. Every request carries the school slug so
 /// the API can route to that school's tenant database (ARCHITECTURE.md §2).
 class ApiClient {
-  // Android emulator reaches the host machine at 10.0.2.2. Change this to
-  // your machine's LAN IP for a physical device, or the deployed API URL
-  // in production.
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  // Only the Android emulator needs the 10.0.2.2 alias to reach the host
+  // machine; web/desktop/iOS-simulator all reach it via localhost. Change
+  // this for a physical device (use your machine's LAN IP) or a deployed
+  // backend in production.
+  static String get baseUrl {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8000';
+    }
+    return 'http://localhost:8000';
+  }
 
   final String schoolSlug;
   String? _staffToken;
