@@ -55,6 +55,11 @@ class PlatformUser(PlatformBase):
     email_verified: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # Set when a guardian record is first created (ARCHITECTURE.md §8) and
+    # cleared once the parent activates their account via /auth/parent/activate.
+    invite_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    invite_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class GuardianMembership(PlatformBase):
     """Maps a parent's platform login to their Guardian row inside one school's tenant DB."""

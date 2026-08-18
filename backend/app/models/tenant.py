@@ -131,3 +131,22 @@ class WelfareAlertLog(TenantBase):
     alert_date: Mapped[date] = mapped_column(Date)
     alert_type: Mapped[str] = mapped_column(String(20))  # no_dropoff / no_pickup
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GuardianDeviceToken(TenantBase):
+    """FCM device token for push notifications (ARCHITECTURE.md §5 point 5).
+
+    Lives in the tenant DB, keyed to the tenant-local Guardian row, since
+    push fan-out on scan already happens inside that school's tenant DB
+    context. A parent registers the same physical-device token once per
+    school they're linked to (see POST /parent/me/devices).
+    """
+
+    __tablename__ = "guardian_device_tokens"
+    __table_args__ = (UniqueConstraint("token", name="uq_guardian_device_token"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    guardian_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("guardians.id"))
+    token: Mapped[str] = mapped_column(String(500))
+    platform: Mapped[str] = mapped_column(String(20))  # ios / android
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

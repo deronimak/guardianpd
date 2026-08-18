@@ -1,12 +1,15 @@
 """Platform-level operations: enrolling a new school (ARCHITECTURE.md §4).
 
 Not gated by X-School-Slug — this is where a school comes into existence,
-so there's no tenant to resolve yet.
+so there's no tenant to resolve yet. Gated by X-Platform-Admin-Key instead
+(require_platform_admin) since this creates arbitrary schools/databases
+and previously had no auth at all.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_platform_admin
 from app.core.security import hash_password
 from app.db.platform import get_platform_db
 from app.db.tenant import get_tenant_engine, get_tenant_sessionmaker, provision_tenant_database
@@ -14,7 +17,7 @@ from app.models.platform import School, Subscription
 from app.models.tenant import StaffUser, TenantBase
 from app.schemas.school import SchoolEnrollRequest, SchoolOut
 
-router = APIRouter(prefix="/platform/schools", tags=["platform"])
+router = APIRouter(prefix="/platform/schools", tags=["platform"], dependencies=[Depends(require_platform_admin)])
 
 
 @router.post("", response_model=SchoolOut, status_code=201)

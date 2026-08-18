@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../parent/parent_home_screen.dart';
+import '../parent/parent_login_screen.dart';
 import '../staff/staff_login_screen.dart';
 
 class RoleSelectScreen extends StatelessWidget {
@@ -16,7 +16,7 @@ class RoleSelectScreen extends StatelessWidget {
           children: [
             ElevatedButton(
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ParentHomeScreen()),
+                MaterialPageRoute(builder: (_) => const ParentLoginScreen()),
               ),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),

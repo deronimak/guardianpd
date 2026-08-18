@@ -14,12 +14,14 @@ from fastapi import Depends, Header, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import decode_access_token
 from app.db.platform import get_platform_db
 from app.db.tenant import get_tenant_sessionmaker
 from app.models.platform import School, Subscription
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/staff/login", auto_error=False)
+oauth2_scheme_parent = OAuth2PasswordBearer(tokenUrl="/auth/parent/login", auto_error=False)
 
 
 def get_school(
@@ -67,3 +69,26 @@ def get_current_staff(
     if claims.get("school_id") != str(school.id):
         raise HTTPException(status_code=403, detail="Token is not valid for this school")
     return claims
+
+
+def get_current_parent(token: str | None = Depends(oauth2_scheme_parent)) -> dict:
+    """Parent auth is platform-level, not school-scoped — a parent's login
+    identity spans every school their children attend (ARCHITECTURE.md §8),
+    unlike staff whose token is pinned to one school above.
+    """
+    if token is None:
+        raise HTTPException(status_code=401, detail="Missing credentials")
+    try:
+        return decode_access_token(token)
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+def require_platform_admin(x_platform_admin_key: str = Header(..., alias="X-Platform-Admin-Key")) -> None:
+    """Gates the platform-ops surface (school enrollment, billing). Not a
+    full auth system — PlatformStaffUser has no login endpoint yet — just a
+    shared secret so these routes aren't wide open to anyone who finds the
+    API.
+    """
+    if x_platform_admin_key != settings.platform_admin_key:
+        raise HTTPException(status_code=401, detail="Invalid platform admin key")

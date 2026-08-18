@@ -27,7 +27,7 @@ The tradeoff: every schema migration has to run across N databases instead of on
 |---|---|---|
 | `School` | id, name, subdomain/slug, status (trial/active/suspended), tenant_db_connection_ref, created_at, welfare_email_enabled, drop_off_cutoff_time, pickup_cutoff_time | Registry of enrolled schools + pointer to their DB. Cutoff times/enabled flag live here (not the tenant DB) so the welfare job can decide whether to bother connecting to a school's tenant DB at all — see §7 |
 | `Subscription` | id, school_id, plan, billing_provider_customer_id, status (trialing/active/past_due/canceled), current_period_end | Drives access — see §4 |
-| `PlatformUser` (parent identity) | id, name, email/phone, password_hash, email_verified | One login identity for a parent, independent of any single school |
+| `PlatformUser` (parent identity) | id, name, email/phone, password_hash, email_verified, invite_token, invite_token_expires_at | One login identity for a parent, independent of any single school. The invite fields back the activation flow in §8 |
 | `GuardianMembership` | platform_user_id, school_id, tenant_guardian_id | Maps a parent's platform login to their `Guardian` row inside each school's tenant DB — needed because a parent can have children at more than one enrolled school |
 | `PlatformStaffUser` (you/your ops team) | id, name, email, role | For your own admin console, separate from school staff |
 
@@ -45,6 +45,7 @@ The tradeoff: every schema migration has to run across N databases instead of on
 | `SchoolCalendar` | date, is_school_day | So the welfare check doesn't fire on weekends/holidays. Treated as an exceptions table — a date with no row defaults to "school day" on weekdays, "not a school day" on weekends |
 | `WelfareAlertLog` | id, student_id, alert_date, alert_type (no_dropoff/no_pickup), created_at | Idempotency marker — unique on (student_id, alert_date, alert_type) so re-running the welfare job doesn't double-email guardians |
 | `Notification` | id, guardian_id, event_id, channel, sent_at | |
+| `GuardianDeviceToken` | id, guardian_id, token, platform (ios/android), created_at | FCM push token, registered per school a parent is linked to — see §5 point 5 |
 
 Why split it this way: a parent logs in once (Platform DB identity), and the app resolves which tenant DB(s) to query based on `GuardianMembership` rows — so a parent with one kid at School A and another at School B sees both under one login, but School A's database never has to know School B exists. Each school's QR codes and attendance stay fully inside that school's own database.
 
@@ -55,6 +56,8 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 - Billing events arrive via webhook (payment succeeded/failed, subscription canceled) and update `Subscription` in the Platform DB — this is the one place billing logic touches, it never reaches into tenant DBs.
 - School enrollment (your side): create `School` row → provision new tenant database + run migrations → create first `StaffUser` (school admin) → send them an invite → `Subscription` starts in `trialing` or `active` depending on your sales flow.
 
+**Implementation status**: checkout-session creation and the webhook handler (`checkout.session.completed` / `invoice.payment_failed` / `customer.subscription.deleted`) are built (`app/api/routes/billing.py`), gated by a shared `X-Platform-Admin-Key` rather than real ops-staff auth (`PlatformStaffUser` has no login endpoint yet — see README). Needs your own Stripe account/API keys to actually run; without them, checkout-session creation returns a `501` rather than a fake URL.
+
 ## 5. QR code security model
 
 **Decision: static QR.** Each guardian gets one permanent, printed QR code per school (not a rotating/TOTP-style code). It doesn't expire on its own — it's valid until manually revoked (lost code, guardian removed, etc.). This is simpler to print, hand out, and laminate than any rotating scheme, but it means the security has to come from *what happens when it's scanned*, not from the code itself changing. A **static printed QR code is a photo away from being cloned**, so the compensating controls are:
@@ -63,10 +66,10 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 2. **Server-side revocation.** Lost/stolen code → admin revokes in that school's DB, reissues a new one. Validation must be a live API call, not local decode-only trust (admin app still caches briefly for offline tolerance, §6).
 3. **Authorization check at scan time, not just identity.** The API separately checks `GuardianStudentLink.is_authorized_pickup` for the specific child. Valid guardian scanning for a child they're not linked to → hard block.
 4. **Live photo capture on scan** (recommended for MVP+1, not MVP). Cheap deterrent against code-sharing, useful in disputes.
-5. **Real-time notification to *all* guardians** linked to that child, not just the scanning one — turns every other guardian into a passive fraud detector.
+5. **Real-time notification to *all* guardians** linked to that child, not just the scanning one — turns every other guardian into a passive fraud detector. Implemented (`app/core/push.py` + fan-out in `app/api/routes/attendance.py`) via Firebase Cloud Messaging, with a log-only fallback when no Firebase project is configured — see README "Push notifications" for what's still a manual step (the Flutter app doesn't have the Firebase SDK wired up, since that needs config files from your own Firebase project).
 6. **Anomaly flagging**: duplicate scans in a short window, pickup with no matching drop-off, scans outside authorized hours.
 
-**Printed QR credential contents.** Each printed page shows the guardian's **name** and the school's name, plus the QR image itself. Deliberately *not* printed: the linked children's names or photos. If a physical page is lost or dropped, it should only reveal whose credential it is — not which children it's tied to. That link is still fully enforced server-side at scan time (point 3 above) regardless of what's on the page; leaving it off the printout is a free reduction in what a found/stolen page can expose. Generated as a PDF, server-side, from the school's enrollment screen — the signed token is composed on the backend and never constructed on-device.
+**Printed QR credential contents.** Each printed page shows the guardian's **name** and the school's name, plus the QR image itself. Deliberately *not* printed: the linked children's names or photos. If a physical page is lost or dropped, it should only reveal whose credential it is — not which children it's tied to. That link is still fully enforced server-side at scan time (point 3 above) regardless of what's on the page; leaving it off the printout is a free reduction in what a found/stolen page can expose. Generated as a PDF, server-side (`GET /guardians/{id}/qr-credential.pdf`, via `app/core/qr_pdf.py`), from the school's enrollment screen — the signed token is composed on the backend and never constructed on-device.
 
 ## 6. Key flows
 
@@ -112,6 +115,8 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 3. Parent separately gets an email/SMS invite to activate their `PlatformUser` account (set password / verify), which is what lets them view attendance history and manage notification/absence settings — the printed QR itself doesn't require the parent to ever log in.
 4. Once active, the parent's single login surfaces every child linked to them, across every enrolled school (via `GuardianMembership`), each school still producing its own separate printed QR (QR is per guardian *per school*, since scanning always happens against one school's tenant DB).
 5. Parent can request additional children be linked — school staff approves, since that's a trust decision the school should own, not the app.
+
+**Implementation status**: steps 1–4 are built. Guardian creation (`POST /guardians`) emails an invite code (logged instead of sent without SMTP configured, same as the welfare job); `POST /auth/parent/activate` and `POST /auth/parent/login` handle the account, and `GET /parent/me/children` does the cross-school aggregation. Step 5 (parent-requested links) isn't built — links are still staff-created only.
 
 ## 9. Backend architecture
 
