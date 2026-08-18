@@ -25,7 +25,7 @@ The tradeoff: every schema migration has to run across N databases instead of on
 
 | Entity | Key fields | Notes |
 |---|---|---|
-| `School` | id, name, subdomain/slug, status (trial/active/suspended), tenant_db_connection_ref, created_at | Registry of enrolled schools + pointer to their DB |
+| `School` | id, name, subdomain/slug, status (trial/active/suspended), tenant_db_connection_ref, created_at, welfare_email_enabled, drop_off_cutoff_time, pickup_cutoff_time | Registry of enrolled schools + pointer to their DB. Cutoff times/enabled flag live here (not the tenant DB) so the welfare job can decide whether to bother connecting to a school's tenant DB at all — see §7 |
 | `Subscription` | id, school_id, plan, billing_provider_customer_id, status (trialing/active/past_due/canceled), current_period_end | Drives access — see §4 |
 | `PlatformUser` (parent identity) | id, name, email/phone, password_hash, email_verified | One login identity for a parent, independent of any single school |
 | `GuardianMembership` | platform_user_id, school_id, tenant_guardian_id | Maps a parent's platform login to their `Guardian` row inside each school's tenant DB — needed because a parent can have children at more than one enrolled school |
@@ -42,7 +42,8 @@ The tradeoff: every schema migration has to run across N databases instead of on
 | `QRCredential` | id, guardian_id, token (signed), issued_at, revoked_at | Signed per (guardian, school) — see §5 |
 | `AttendanceEvent` | id, student_id, guardian_id, type (drop_off/pick_up), scanned_by_staff_id, timestamp, flagged, flag_reason | |
 | `ExpectedAbsence` | id, student_id, date_range, reason, created_by | Parent- or staff-marked planned absence — critical input to the welfare system, see §7 |
-| `SchoolCalendar` | date, is_school_day | So the welfare check doesn't fire on weekends/holidays |
+| `SchoolCalendar` | date, is_school_day | So the welfare check doesn't fire on weekends/holidays. Treated as an exceptions table — a date with no row defaults to "school day" on weekdays, "not a school day" on weekends |
+| `WelfareAlertLog` | id, student_id, alert_date, alert_type (no_dropoff/no_pickup), created_at | Idempotency marker — unique on (student_id, alert_date, alert_type) so re-running the welfare job doesn't double-email guardians |
 | `Notification` | id, guardian_id, event_id, channel, sent_at | |
 
 Why split it this way: a parent logs in once (Platform DB identity), and the app resolves which tenant DB(s) to query based on `GuardianMembership` rows — so a parent with one kid at School A and another at School B sees both under one login, but School A's database never has to know School B exists. Each school's QR codes and attendance stay fully inside that school's own database.
@@ -94,9 +95,14 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 4. A second pass runs near end-of-day for pickup: any student with a `drop_off` today but no `pick_up` by the school's cutoff → same treatment (this one's arguably more urgent — the child is confirmed on-site with no confirmed release).
 5. Log every alert sent (`Notification` row) so it's auditable and doesn't double-send if the job retries.
 
-**Delivery**: transactional email provider (SendGrid, Postgres, or AWS SES) — not the same channel as the push notifications in §5, since welfare alerts need to reach a parent even if they haven't opened the app in weeks and push has gone stale.
+**Delivery**: transactional email provider (SendGrid, Postgres, or AWS SES) — not the same channel as the push notifications in §5, since welfare alerts need to reach a parent even if they haven't opened the app in weeks and push has gone stale. Implemented over plain SMTP (`app/core/email.py`) so any of those providers works without a vendor SDK; logs instead of sending when no SMTP host is configured, so the job runs end-to-end in local dev.
 
 **Sensitivity note**: this feature directly touches child safety. False negatives (a genuine no-show that doesn't alert) and false positives (routine alerts training parents to ignore them) are both real failure modes worth testing deliberately — this is not a "ship it and see" feature.
+
+**Implementation notes** (`app/jobs/welfare_check.py`):
+- Idempotency comes from `WelfareAlertLog`'s unique constraint, not from tracking "did the job run today" — this makes it safe to invoke the job frequently (e.g. every 15 minutes) via an external scheduler rather than needing precise once-daily triggering. See README for cron / Windows Task Scheduler examples.
+- `ExpectedAbsence` creation is currently staff-authenticated only (`POST /students/{id}/expected-absences`), not parent self-service — parent login/auth isn't built yet (§8 describes the intended flow; the account-activation piece is still on the "not yet built" list in README).
+- Cutoff-time comparison uses naive server-local time, not each school's own timezone — fine for a single-timezone pilot, but a real multi-region deployment needs a timezone field on `School`.
 
 ## 8. Parent account & onboarding
 

@@ -2,8 +2,9 @@
 
 import uuid
 from datetime import datetime
+from datetime import time as dt_time
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Time, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,6 +20,14 @@ class School(PlatformBase):
     tenant_db_name: Mapped[str] = mapped_column(String(63), unique=True)
     status: Mapped[str] = mapped_column(String(20), default="trial")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Welfare-email job config (ARCHITECTURE.md §7). Cutoff times are naive
+    # (compared against server local time) — a real deployment spanning
+    # schools in different timezones needs a timezone field here too; this
+    # scaffold assumes one server timezone == every school's timezone.
+    welfare_email_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    drop_off_cutoff_time: Mapped[dt_time] = mapped_column(Time, default=dt_time(9, 30))
+    pickup_cutoff_time: Mapped[dt_time] = mapped_column(Time, default=dt_time(18, 0))
 
 
 class Subscription(PlatformBase):

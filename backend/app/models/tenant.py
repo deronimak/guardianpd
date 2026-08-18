@@ -113,3 +113,21 @@ class Notification(TenantBase):
     event_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("attendance_events.id"), nullable=True)
     channel: Mapped[str] = mapped_column(String(20))  # push / email
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WelfareAlertLog(TenantBase):
+    """Idempotency marker for the welfare-email job (ARCHITECTURE.md §7).
+
+    One row per (student, date, alert_type). Its uniqueness constraint is
+    what makes it safe to run the job more than once on the same day
+    without double-emailing guardians — see app/jobs/welfare_check.py.
+    """
+
+    __tablename__ = "welfare_alert_log"
+    __table_args__ = (UniqueConstraint("student_id", "alert_date", "alert_type", name="uq_welfare_alert"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("students.id"))
+    alert_date: Mapped[date] = mapped_column(Date)
+    alert_type: Mapped[str] = mapped_column(String(20))  # no_dropoff / no_pickup
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
