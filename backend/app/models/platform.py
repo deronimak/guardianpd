@@ -1,0 +1,71 @@
+"""Platform (central) DB models — ARCHITECTURE.md §3."""
+
+import uuid
+from datetime import datetime
+
+from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.platform import PlatformBase
+
+
+class School(PlatformBase):
+    __tablename__ = "schools"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255))
+    slug: Mapped[str] = mapped_column(String(100), unique=True)
+    tenant_db_name: Mapped[str] = mapped_column(String(63), unique=True)
+    status: Mapped[str] = mapped_column(String(20), default="trial")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Subscription(PlatformBase):
+    __tablename__ = "subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("schools.id"), unique=True)
+    plan: Mapped[str] = mapped_column(String(50), default="standard")
+    billing_provider_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # trialing / active / past_due / canceled — see ARCHITECTURE.md §4 for what each gates.
+    status: Mapped[str] = mapped_column(String(20), default="trialing")
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PlatformUser(PlatformBase):
+    """A parent's single login identity, shared across every enrolled school they touch."""
+
+    __tablename__ = "platform_users"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_verified: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class GuardianMembership(PlatformBase):
+    """Maps a parent's platform login to their Guardian row inside one school's tenant DB."""
+
+    __tablename__ = "guardian_memberships"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    platform_user_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("platform_users.id"))
+    school_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("schools.id"))
+    # No FK — this UUID lives in a different physical database (the school's tenant DB).
+    tenant_guardian_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+
+
+class PlatformStaffUser(PlatformBase):
+    """Your own ops team (school enrollment, billing support) — distinct from a school's own staff."""
+
+    __tablename__ = "platform_staff_users"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str] = mapped_column(String(255), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(50), default="ops")

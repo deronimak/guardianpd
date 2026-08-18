@@ -1,0 +1,29 @@
+# Python
+backend/.venv/
+backend/**/__pycache__/
+backend/*.egg-info/
+backend/*.log
+*.pyc
+
+# Claude Code local settings
+.claude/
+
+# Env files
+.env
+backend/.env
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/.idea/
+mobile/*.iml
+mobile/android/.gradle/
+mobile/android/local.properties
+
+# IDE / OS
+.vscode/
+.DS_Store
+Thumbs.db
