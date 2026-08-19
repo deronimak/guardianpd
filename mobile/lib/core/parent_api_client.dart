@@ -55,16 +55,66 @@ class ParentApiClient {
     return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
   }
 
-  /// Registers a push-notification device token. Requires the Flutter app
-  /// to be wired up with a real Firebase project (firebase_messaging +
-  /// google-services.json) to obtain an actual token — not set up in this
-  /// scaffold; see README. The backend side (fan-out on scan) is ready to
-  /// receive whatever token you pass here.
+  /// Registers a push-notification device token (Android — see
+  /// lib/core/push_registration.dart; iOS isn't wired up).
   Future<void> registerDevice({required String token, required String platform}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/parent/me/devices'),
       headers: _headers(),
       body: jsonEncode({'token': token, 'platform': platform}),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException(response.statusCode, response.body);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> attendanceHistory({
+    required String schoolSlug,
+    required String studentId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/parent/me/schools/$schoolSlug/students/$studentId/attendance'),
+      headers: _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<List<Map<String, dynamic>>> expectedAbsences({
+    required String schoolSlug,
+    required String studentId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/parent/me/schools/$schoolSlug/students/$studentId/expected-absences'),
+      headers: _headers(),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+  }
+
+  /// [startDate]/[endDate] are sent as plain yyyy-MM-dd (matches Python's
+  /// date.fromisoformat, which the backend's Pydantic schema expects).
+  Future<void> markExpectedAbsence({
+    required String schoolSlug,
+    required String studentId,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? reason,
+  }) async {
+    String iso(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    final response = await http.post(
+      Uri.parse('$baseUrl/parent/me/schools/$schoolSlug/students/$studentId/expected-absences'),
+      headers: _headers(),
+      body: jsonEncode({
+        'start_date': iso(startDate),
+        'end_date': iso(endDate),
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      }),
     );
     if (response.statusCode != 201) {
       throw ApiException(response.statusCode, response.body);

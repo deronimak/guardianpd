@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/parent_api_client.dart';
 import '../../core/push_registration.dart';
+import 'student_detail_screen.dart';
 
 /// Shows every child linked to this parent, aggregated across schools by
-/// the backend (ARCHITECTURE.md §2/§8). Attendance history and
-/// planned-absence marking aren't built yet.
+/// the backend (ARCHITECTURE.md §2/§8). Tap a child for attendance history
+/// and planned-absence marking.
 class ParentHomeScreen extends StatefulWidget {
   final ParentApiClient apiClient;
   const ParentHomeScreen({super.key, required this.apiClient});
@@ -52,6 +53,17 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
                 subtitle: Text(
                   '${child['school_name'] ?? ''}'
                   '${child['grade'] != null ? ' — ${child['grade']}' : ''}',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => StudentDetailScreen(
+                      apiClient: widget.apiClient,
+                      schoolSlug: child['school_slug'] as String,
+                      studentId: child['student_id'] as String,
+                      studentName: child['student_name'] as String? ?? '',
+                    ),
+                  ),
                 ),
               );
             },
