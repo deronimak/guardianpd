@@ -28,7 +28,10 @@ android {
         applicationId = "com.schoolqr.mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Flutter's default (21) is too low for mobile_scanner's camera
+        // dependency (androidx.camera:camera-core requires 23) — surfaced
+        // by a real build attempt.
+        minSdk = 23
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

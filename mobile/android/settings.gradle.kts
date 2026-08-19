@@ -19,11 +19,13 @@ pluginManagement {
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.7.0" apply false
-    id("org.jetbrains.kotlin.android") version "1.8.22" apply false
+    // Bumped from Flutter's default 1.8.22 — firebase_core/firebase_messaging
+    // transitively pull in kotlin-stdlib 2.1.0, which 1.8.22's compiler
+    // can't read (surfaced by a real build attempt, not guessed).
+    id("org.jetbrains.kotlin.android") version "2.1.0" apply false
     // Reads android/app/google-services.json at build time to configure
-    // Firebase natively. The file doesn't exist yet — see README for how
-    // to get it from the Firebase console. Android builds will fail with
-    // a clear "File google-services.json is missing" error until it's added.
+    // Firebase natively — see README "Push notifications" for how to get
+    // it from the Firebase console.
     id("com.google.gms.google-services") version "4.4.2" apply false
 }
 
