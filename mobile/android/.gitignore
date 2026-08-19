@@ -12,3 +12,8 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Firebase config — specific to each developer's/environment's Firebase
+# project, shouldn't be committed. Not a high-security secret the way a
+# service-account key is, but keep it out of version control anyway.
+app/google-services.json
