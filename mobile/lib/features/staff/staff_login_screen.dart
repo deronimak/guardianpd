@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
-import 'staff_scanner_screen.dart';
+import 'staff_home_screen.dart';
 
 class StaffLoginScreen extends StatefulWidget {
   const StaffLoginScreen({super.key});
@@ -27,7 +27,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
       await client.staffLogin(_emailController.text.trim(), _passwordController.text);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => StaffScannerScreen(apiClient: client)),
+        MaterialPageRoute(builder: (_) => StaffHomeScreen(apiClient: client)),
       );
     } catch (e) {
       setState(() => _error = 'Login failed: $e');

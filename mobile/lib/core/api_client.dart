@@ -51,6 +51,38 @@ class ApiClient {
     _staffToken = jsonDecode(response.body)['access_token'] as String;
   }
 
+  /// School-initiated guardian enrollment (ARCHITECTURE.md §8): creates the
+  /// guardian, issues their QR credential, and emails them an activation
+  /// invite. Returns the new guardian's id/name/qr_token.
+  Future<Map<String, dynamic>> createGuardian({
+    required String name,
+    required String email,
+    String? phone,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/guardians'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({'name': name, 'email': email, if (phone != null && phone.isNotEmpty) 'phone': phone}),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Fetches the printed QR credential PDF for a guardian, to hand off to
+  /// the OS share sheet (see enroll_guardian_screen.dart).
+  Future<List<int>> downloadQrCredentialPdf(String guardianId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/guardians/$guardianId/qr-credential.pdf'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return response.bodyBytes;
+  }
+
   /// Scans a guardian's QR credential for one child. See the security flow
   /// in ARCHITECTURE.md §5/§6 — this simply forwards to the backend, which
   /// does the signature/revocation/authorization checks.
