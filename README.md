@@ -23,14 +23,14 @@ mobile/     Flutter app (parent + staff/admin roles in one codebase)
 - Stripe checkout-session creation + webhook handling for subscription status — see "Billing" below
 - Platform ops console (`/admin`, same-origin static page) to enroll schools and override subscription status without curl
 - Flutter app: role selection, staff login with live camera QR scanning, parent login/activation with a real linked-children list, and (Android) real push notification registration via Firebase — see "Push notifications" for the one file you still need to add
+- Parent-facing attendance history and planned-absence marking (`GET`/`POST /parent/me/schools/{slug}/students/{id}/...`) — tap a child in My Children to see it. Same authorization boundary as the scan flow: a parent can only read/write for a student they're actually linked to.
 
 **Not yet built** (see ARCHITECTURE.md for the design):
 - Cross-database consistency handling for the platform-DB/tenant-DB writes in guardian creation and school enrollment (currently two separate commits, not atomic — see comments in `app/api/routes/guardians.py` and `schools.py`)
 - Per-school timezone handling for the welfare job (it currently compares cutoff times against naive server-local time)
-- Parent-facing `ExpectedAbsence` creation (the endpoint exists but is staff-only for now — a parent-facing version is a small addition now that parent auth exists)
-- Attendance history / notification-preferences screens in the parent app
+- Notification-preferences screen in the parent app
 - A real ops-staff auth system (`PlatformStaffUser` has no login endpoint — platform routes are gated by a single shared admin key instead, see below)
-- iOS push notification wiring (Android-only for now — see "Push notifications")
+- **iOS is blocked in this dev environment, not just undone**: push notification wiring, and building/running the app at all, both require Xcode on macOS. This project was built entirely on Windows, which has no path to either — someone with a Mac needs to pick this up (`flutterfire configure` + `GoogleService-Info.plist`, then the standard `firebase_messaging` iOS setup)
 - Stripe SDK wiring in the Flutter app itself (backend is ready; see "Billing" below)
 
 ## Backend setup
