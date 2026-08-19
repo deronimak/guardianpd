@@ -166,6 +166,10 @@
           <option value="Australia/Sydney"></option>
         </datalist>
       </div>
+      <div>
+        <label>Billing email (Paystack checkout contact — defaults to admin email)</label>
+        <input type="email" id="f-billing-email" placeholder="billing@example-high.example.com" />
+      </div>
       <div class="full">
         <button type="submit">Enroll school</button>
       </div>
@@ -284,6 +288,7 @@
       admin_email: document.getElementById("f-admin-email").value,
       admin_temp_password: document.getElementById("f-admin-password").value,
       timezone: document.getElementById("f-timezone").value,
+      billing_email: document.getElementById("f-billing-email").value || null,
     };
     try {
       const school = await apiFetch("/platform/schools", { method: "POST", body: JSON.stringify(payload) });

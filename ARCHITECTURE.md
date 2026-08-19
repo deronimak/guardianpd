@@ -51,12 +51,12 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 
 ## 4. Subscription & billing
 
-- Use a payment provider with subscription support (Stripe is the standard choice) rather than building billing logic yourself.
+- Use a payment provider with subscription support (Paystack, chosen here) rather than building billing logic yourself.
 - **Decision: full scan lockout on lapsed payment.** A school in `past_due` or `canceled` keeps read/export access to existing records (schools need their attendance history even if they stop paying), but loses three things: new QR issuance, **QR scan validation**, and the welfare email job. This means a lapsed school can't log *any* attendance at all — including for children who already have a printed code — until payment is resolved. That's a real operational consequence (a school could be scanning-blind for a day over a billing hiccup), so the scan-validation endpoint has to check `Subscription.status` on every single scan, not just at issuance time, and the app should surface a clear "subscription inactive, contact your account rep" error to staff rather than a generic failure — this will get reported as a bug otherwise.
 - Billing events arrive via webhook (payment succeeded/failed, subscription canceled) and update `Subscription` in the Platform DB — this is the one place billing logic touches, it never reaches into tenant DBs.
 - School enrollment (your side): create `School` row → provision new tenant database + run migrations → create first `StaffUser` (school admin) → send them an invite → `Subscription` starts in `trialing` or `active` depending on your sales flow.
 
-**Implementation status**: checkout-session creation and the webhook handler (`checkout.session.completed` / `invoice.payment_failed` / `customer.subscription.deleted`) are built (`app/api/routes/billing.py`), gated by a real `PlatformStaffUser` login (§9) rather than the shared admin key this used to be. Needs your own Stripe account/API keys to actually run; without them, checkout-session creation returns a `501` rather than a fake URL.
+**Implementation status**: checkout-session creation and the webhook handler (`charge.success` / `invoice.payment_failed` / `subscription.disable`) are built (`app/api/routes/billing.py`), gated by a real `PlatformStaffUser` login (§9) rather than the shared admin key this used to be. Needs your own Paystack account/API keys to actually run; without them, checkout-session creation returns a `501` rather than a fake URL. Correlation back to a `School` happens via `metadata.school_id` on the initial transaction (echoed back on `charge.success`) and via `billing_provider_customer_id` (Paystack's `customer_code`) for later lifecycle events, since Paystack has no client-reference-id-style field the way Stripe does.
 
 ## 5. QR code security model
 
@@ -142,13 +142,13 @@ Suggested packages: `mobile_scanner` for camera QR reading; QR image generation 
 
 **MVP**
 - School enrollment + tenant DB provisioning (can be a manual/scripted step initially, doesn't need a self-serve signup flow yet).
-- Basic subscription gating (even just "active/inactive" before wiring up full Stripe billing).
+- Basic subscription gating (even just "active/inactive" before wiring up full Paystack billing).
 - Staff login, guardian invite + multi-child linking, QR issuance, scan → attendance log, push notification on scan.
 - Welfare email for no-drop-off only (skip the end-of-day no-pickup pass initially), with manual planned-absence marking.
 - Basic offline queueing for the scanner.
 
 **Phase 2+**
-- Full Stripe billing + self-serve trial signup, live photo-on-scan, anomaly detection, end-of-day no-pickup alerts, temporary pickup delegation, platform ops console, SIS integrations, pickup ETA.
+- Full Paystack billing + self-serve trial signup, live photo-on-scan, anomaly detection, end-of-day no-pickup alerts, temporary pickup delegation, platform ops console, SIS integrations, pickup ETA.
 
 ## 12. Suggested next steps
 1. Stand up the Platform DB schema + tenant-provisioning script (create DB, run migrations, seed first school admin) — this underlies everything else.

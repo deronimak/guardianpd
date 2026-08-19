@@ -12,6 +12,7 @@ class SchoolEnrollRequest(BaseModel):
     admin_email: EmailStr
     admin_temp_password: str = Field(min_length=8)
     timezone: str = Field(default="UTC", description="IANA timezone identifier, e.g. 'America/New_York' — drives welfare-job cutoff times")
+    billing_email: EmailStr | None = Field(default=None, description="Paystack checkout contact — defaults to admin_email if omitted")
 
     @field_validator("timezone")
     @classmethod
@@ -31,6 +32,7 @@ class SchoolOut(BaseModel):
     slug: str
     status: str
     timezone: str
+    billing_email: str | None
 
 
 class SchoolWithSubscriptionOut(BaseModel):
@@ -39,6 +41,7 @@ class SchoolWithSubscriptionOut(BaseModel):
     slug: str
     status: str
     timezone: str
+    billing_email: str | None
     created_at: datetime
     subscription_status: str
     subscription_plan: str

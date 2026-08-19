@@ -37,6 +37,7 @@ def list_schools(platform_db: Session = Depends(get_platform_db)) -> list[dict]:
                 "slug": school.slug,
                 "status": school.status,
                 "timezone": school.timezone,
+                "billing_email": school.billing_email,
                 "created_at": school.created_at,
                 "subscription_status": subscription.status if subscription else "none",
                 "subscription_plan": subscription.plan if subscription else "none",
@@ -79,6 +80,7 @@ def enroll_school(payload: SchoolEnrollRequest) -> School:
             tenant_db_name=tenant_db_name,
             status="trial",
             timezone=payload.timezone,
+            billing_email=payload.billing_email or payload.admin_email,
         )
         db.add(school)
         db.flush()  # need school.id before the Subscription row

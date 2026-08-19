@@ -31,6 +31,11 @@ class School(PlatformBase):
     pickup_cutoff_time: Mapped[dt_time] = mapped_column(Time, default=dt_time(18, 0))
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
 
+    # Paystack needs a customer email to initialize a checkout transaction
+    # (ARCHITECTURE.md §4) — defaults to the school admin's email at
+    # enrollment, since School has no other stored contact.
+    billing_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
 
 class Subscription(PlatformBase):
     __tablename__ = "subscriptions"

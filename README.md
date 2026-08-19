@@ -20,7 +20,7 @@ mobile/     Flutter app (parent + staff/admin roles in one codebase)
 - Welfare/absence email job (`app/jobs/welfare_check.py`), timezone-aware per school — see "Welfare email job" below
 - Parent account activation + login (platform-level, spans every school a parent's children attend) and a linked-children list
 - Real-time push notification fan-out on every scan (success and unauthorized-attempt cases), best-effort — one bad device token can't fail the scan or block other guardians' notifications, and dead tokens get pruned automatically — see "Push notifications" below
-- Stripe checkout-session creation + webhook handling for subscription status — see "Billing" below
+- Paystack checkout-session creation + webhook handling for subscription status — see "Billing" below
 - Platform ops console (`/admin`, same-origin static page) to enroll schools and override subscription status, with a real login instead of curl + a shared key
 - Flutter app: role selection, staff login with live camera QR scanning, parent login/activation with a real linked-children list, and (Android) real push notification registration via Firebase — see "Push notifications" for the one file you still need to add
 - Parent-facing attendance history and planned-absence marking (`GET`/`POST /parent/me/schools/{slug}/students/{id}/...`) — tap a child in My Children to see it. Same authorization boundary as the scan flow: a parent can only read/write for a student they're actually linked to.
@@ -30,7 +30,7 @@ mobile/     Flutter app (parent + staff/admin roles in one codebase)
 **Not yet built** (see ARCHITECTURE.md for the design):
 - Notification-preferences screen in the parent app
 - **iOS is blocked in this dev environment, not just undone**: push notification wiring, and building/running the app at all, both require Xcode on macOS. This project was built entirely on Windows, which has no path to either — someone with a Mac needs to pick this up (`flutterfire configure` + `GoogleService-Info.plist`, then the standard `firebase_messaging` iOS setup)
-- Stripe SDK wiring in the Flutter app itself (backend is ready; see "Billing" below)
+- Paystack checkout wiring in the Flutter app itself (backend is ready; see "Billing" below)
 
 ## Backend setup
 
@@ -125,13 +125,14 @@ Building with these plugins on Windows also needs **Developer Mode** enabled (`s
 
 ## Billing
 
-Stripe checkout-session creation and a webhook that updates `Subscription.status` (`active` / `past_due` / `canceled`) are implemented (`app/api/routes/billing.py`), gated by platform-staff login like school enrollment (the webhook itself isn't — Stripe calls it directly, verified by signature instead). You need your own Stripe account:
+Paystack checkout-session creation and a webhook that updates `Subscription.status` (`active` / `past_due` / `canceled`) are implemented (`app/api/routes/billing.py`), gated by platform-staff login like school enrollment (the webhook itself isn't — Paystack calls it directly, verified by signature instead). You need your own Paystack account:
 
-1. Set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` in `.env` (test-mode keys are fine for development).
-2. `POST /platform/schools/{school_id}/billing/checkout-session` returns a `checkout_url` to redirect a school admin to.
-3. To receive webhook events locally, use the Stripe CLI: `stripe listen --forward-to localhost:8000/platform/billing/webhook` (a separate tool you'd install yourself — not set up here).
+1. Create a Plan in the Paystack dashboard and note its plan code.
+2. Set `PAYSTACK_SECRET_KEY` and `PAYSTACK_PLAN_CODE` in `.env` (test-mode keys are fine for development).
+3. `POST /platform/schools/{school_id}/billing/checkout-session` calls Paystack's `/transaction/initialize` and returns a `checkout_url` to redirect a school admin to. Requires the school to have a `billing_email` on file (set at enrollment, defaulting to the admin's email).
+4. Register `https://<your-domain>/platform/billing/webhook` in the Paystack dashboard to receive events — webhooks are configured account-wide there, not per-session, so local testing needs a tunnel (e.g. ngrok) forwarding to `localhost:8000/platform/billing/webhook`.
 
-Without Stripe configured, the checkout-session endpoint returns a clear `501` rather than a fake URL.
+Paystack signs webhooks with `PAYSTACK_SECRET_KEY` itself (HMAC-SHA512 over the raw body, in the `x-paystack-signature` header) — there's no separate webhook secret like Stripe has. Without Paystack configured, the checkout-session endpoint returns a clear `501` rather than a fake URL.
 
 ## Platform staff accounts
 

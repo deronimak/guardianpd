@@ -32,15 +32,15 @@ class Settings(BaseSettings):
     # SMTP above. See app/core/push.py.
     firebase_credentials_json: str = ""
 
-    # Stripe billing (ARCHITECTURE.md §4). Requires your own Stripe
+    # Paystack billing (ARCHITECTURE.md §4). Requires your own Paystack
     # account/API keys — checkout-session creation returns a clear 501
-    # until stripe_secret_key is set (there's no meaningful "fake" checkout
-    # URL to fall back to the way there is for email/push).
-    stripe_secret_key: str = ""
-    stripe_webhook_secret: str = ""
-    stripe_price_id: str = ""
-    stripe_success_url: str = "https://example.com/billing/success"
-    stripe_cancel_url: str = "https://example.com/billing/cancel"
+    # until paystack_secret_key/paystack_plan_code are set (there's no
+    # meaningful "fake" checkout URL to fall back to the way there is for
+    # email/push). Paystack verifies webhooks with the same secret key
+    # (HMAC-SHA512), not a separate webhook secret like Stripe.
+    paystack_secret_key: str = ""
+    paystack_plan_code: str = ""
+    paystack_callback_url: str = "https://example.com/billing/callback"
 
 
 settings = Settings()
