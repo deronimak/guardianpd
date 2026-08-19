@@ -1,3 +1,6 @@
+import logging
+
+import firebase_admin.exceptions
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -16,6 +19,8 @@ from app.models.tenant import (
 )
 from app.schemas.attendance import ScanRequest, ScanResponse
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
 _ACTION_LABEL = {"drop_off": "dropped off", "pick_up": "picked up"}
@@ -31,10 +36,21 @@ def _guardians_for_student(tenant_db: Session, student_id) -> list[Guardian]:
 
 
 def _push_to_guardians(tenant_db: Session, guardians: list[Guardian], event_id, title: str, body: str) -> None:
+    """Best-effort: a bad/stale device token must never fail the attendance
+    write itself — the scan already succeeded before this runs. A dead
+    token (app uninstalled, etc.) is pruned; any other send error is just
+    logged so one broken token can't block everyone else's notification.
+    """
     for guardian in guardians:
         devices = tenant_db.query(GuardianDeviceToken).filter_by(guardian_id=guardian.id).all()
         for device in devices:
-            send_push(device.token, title=title, body=body)
+            try:
+                send_push(device.token, title=title, body=body)
+            except (firebase_admin.exceptions.NotFoundError, firebase_admin.exceptions.InvalidArgumentError):
+                logger.info("Pruning dead device token for guardian %s", guardian.id)
+                tenant_db.delete(device)
+            except Exception:
+                logger.exception("Push send failed for guardian %s (continuing)", guardian.id)
         # One Notification row per guardian even with zero devices registered
         # yet — keeps an auditable record that we tried, per ARCHITECTURE.md §7.
         tenant_db.add(Notification(guardian_id=guardian.id, event_id=event_id, channel="push"))
