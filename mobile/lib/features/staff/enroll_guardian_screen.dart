@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../core/api_client.dart';
+import 'link_guardian_screen.dart';
 
 class EnrollGuardianScreen extends StatefulWidget {
   final ApiClient apiClient;
@@ -172,6 +173,20 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
               ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.print),
           label: const Text('Share / print QR credential'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.link),
+          label: const Text('Link to a student'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => LinkGuardianScreen(
+                apiClient: widget.apiClient,
+                guardianId: _enrolledGuardianId!,
+                guardianName: _enrolledGuardianName!,
+              ),
+            ),
+          ),
         ),
         const SizedBox(height: 12),
         OutlinedButton(

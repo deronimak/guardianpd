@@ -83,6 +83,51 @@ class ApiClient {
     return response.bodyBytes;
   }
 
+  /// Lists students at this school, for the "link guardian to student" picker.
+  Future<List<Map<String, dynamic>>> listStudents() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/students'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> createStudent({required String name, String? grade}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/students'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({'name': name, if (grade != null && grade.isNotEmpty) 'grade': grade}),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Many-to-many guardian<->student authorization link (ARCHITECTURE.md §3)
+  /// — who's allowed to drop off/pick up which children.
+  Future<void> linkGuardianToStudent({
+    required String studentId,
+    required String guardianId,
+    String? relationship,
+    bool isAuthorizedPickup = true,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/students/$studentId/guardians/$guardianId'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({
+        if (relationship != null && relationship.isNotEmpty) 'relationship': relationship,
+        'is_authorized_pickup': isAuthorizedPickup,
+      }),
+    );
+    if (response.statusCode != 201) {
+      throw ApiException(response.statusCode, response.body);
+    }
+  }
+
   /// Scans a guardian's QR credential for one child. See the security flow
   /// in ARCHITECTURE.md §5/§6 — this simply forwards to the backend, which
   /// does the signature/revocation/authorization checks.

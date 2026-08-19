@@ -15,6 +15,7 @@ class StudentOut(BaseModel):
 
     id: uuid.UUID
     name: str
+    grade: str | None = None
 
 
 class LinkCreateRequest(BaseModel):

@@ -3,11 +3,20 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_tenant_db
+from app.api.deps import get_current_staff, get_tenant_db
 from app.models.tenant import GuardianStudentLink, Student
 from app.schemas.student import LinkCreateRequest, StudentCreateRequest, StudentOut
 
-router = APIRouter(prefix="/students", tags=["students"])
+router = APIRouter(prefix="/students", tags=["students"], dependencies=[Depends(get_current_staff)])
+
+
+@router.get("", response_model=list[StudentOut])
+def list_students(tenant_db: Session = Depends(get_tenant_db)) -> list[Student]:
+    """Powers the guardian-enrollment screen's "link to a student" picker —
+    there was previously no way to see existing students short of querying
+    the tenant DB directly.
+    """
+    return tenant_db.query(Student).order_by(Student.name).all()
 
 
 @router.post("", response_model=StudentOut, status_code=201)
