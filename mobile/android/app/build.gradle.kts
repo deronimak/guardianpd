@@ -8,8 +8,11 @@ plugins {
 
 android {
     namespace = "com.schoolqr.mobile"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Pinned above Flutter's default: mobile_scanner needs SDK 36, and
+    // firebase_core/firebase_messaging/mobile_scanner all need NDK 27 —
+    // surfaced by a real build attempt, not guessed.
+    compileSdk = 36
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
