@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import uuid
+import zoneinfo
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -180,10 +181,28 @@ def run_pickup_check(school: School, tenant_db: Session, today: dt.date) -> int:
     return alerted
 
 
+def _school_local_now(school: School, utc_now: dt.datetime) -> dt.datetime:
+    """Converts a UTC instant into this school's own local wall-clock time
+    — cutoff times (School.drop_off_cutoff_time etc.) are local to each
+    school, so two schools in different timezones must be evaluated
+    independently rather than against one shared server-local clock.
+    """
+    try:
+        tz = zoneinfo.ZoneInfo(school.timezone)
+    except zoneinfo.ZoneInfoNotFoundError:
+        logger.warning("%s: unknown timezone %r, treating as UTC", school.slug, school.timezone)
+        tz = dt.timezone.utc
+    return utc_now.astimezone(tz)
+
+
 def run_welfare_checks_for_all_schools(now: dt.datetime | None = None) -> None:
-    now = now or dt.datetime.now()
-    today = now.date()
-    current_time = now.time()
+    """`now`, if given, must be tz-aware (naive values are assumed UTC) —
+    it's a single fixed instant in time, converted to each school's own
+    local time below, not a wall-clock time itself.
+    """
+    utc_now = now or dt.datetime.now(dt.timezone.utc)
+    if utc_now.tzinfo is None:
+        utc_now = utc_now.replace(tzinfo=dt.timezone.utc)
 
     platform_db = PlatformSessionLocal()
     try:
@@ -198,6 +217,10 @@ def run_welfare_checks_for_all_schools(now: dt.datetime | None = None) -> None:
         )
 
         for school in schools:
+            local_now = _school_local_now(school, utc_now)
+            today = local_now.date()
+            current_time = local_now.time()
+
             tenant_db = get_tenant_sessionmaker(school.tenant_db_name)()
             try:
                 if current_time >= school.drop_off_cutoff_time:

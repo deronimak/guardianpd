@@ -1,23 +1,24 @@
 """Platform-level operations: enrolling a new school (ARCHITECTURE.md §4).
 
 Not gated by X-School-Slug — this is where a school comes into existence,
-so there's no tenant to resolve yet. Gated by X-Platform-Admin-Key instead
-(require_platform_admin) since this creates arbitrary schools/databases
-and previously had no auth at all.
+so there's no tenant to resolve yet. Gated by a real PlatformStaffUser
+login (require_platform_staff) — see app/jobs/create_platform_staff.py to
+bootstrap an account.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_platform_admin
+from app.api.deps import require_platform_staff
 from app.core.security import hash_password
-from app.db.platform import get_platform_db
-from app.db.tenant import get_tenant_engine, get_tenant_sessionmaker, provision_tenant_database
+from app.db.platform import SessionLocal, get_platform_db
+from app.db.tenant import get_tenant_engine, provision_tenant_database
+from app.db.twophase import get_twophase_session
 from app.models.platform import School, Subscription
 from app.models.tenant import StaffUser, TenantBase
 from app.schemas.school import SchoolEnrollRequest, SchoolOut, SchoolWithSubscriptionOut
 
-router = APIRouter(prefix="/platform/schools", tags=["platform"], dependencies=[Depends(require_platform_admin)])
+router = APIRouter(prefix="/platform/schools", tags=["platform"], dependencies=[Depends(require_platform_staff)])
 
 
 @router.get("", response_model=list[SchoolWithSubscriptionOut])
@@ -35,6 +36,7 @@ def list_schools(platform_db: Session = Depends(get_platform_db)) -> list[dict]:
                 "name": school.name,
                 "slug": school.slug,
                 "status": school.status,
+                "timezone": school.timezone,
                 "created_at": school.created_at,
                 "subscription_status": subscription.status if subscription else "none",
                 "subscription_plan": subscription.plan if subscription else "none",
@@ -44,31 +46,45 @@ def list_schools(platform_db: Session = Depends(get_platform_db)) -> list[dict]:
 
 
 @router.post("", response_model=SchoolOut, status_code=201)
-def enroll_school(payload: SchoolEnrollRequest, platform_db: Session = Depends(get_platform_db)) -> School:
-    if platform_db.query(School).filter_by(slug=payload.slug).first() is not None:
-        raise HTTPException(status_code=409, detail="A school with this slug already exists")
+def enroll_school(payload: SchoolEnrollRequest) -> School:
+    """Creates the School/Subscription (platform DB) and first StaffUser
+    (tenant DB) as a single atomic unit via two-phase commit (see
+    app/db/twophase.py) — either all three exist or none do.
 
-    school = School(
-        name=payload.name,
-        slug=payload.slug,
-        tenant_db_name=f"tenant_{payload.slug.replace('-', '_')}",
-        status="trial",
-    )
-    platform_db.add(school)
-    platform_db.flush()  # need school.id before creating the Subscription row
-
-    platform_db.add(Subscription(school_id=school.id, status="trialing"))
-
-    # Provisioning + seeding the tenant DB happens outside the platform_db
-    # transaction (it's a different physical database, so this can't be
-    # made atomic with the platform_db commit below — see the note in
-    # app/api/routes/guardians.py about the same limitation).
-    provision_tenant_database(school.tenant_db_name)
-    TenantBase.metadata.create_all(get_tenant_engine(school.tenant_db_name))
-
-    tenant_session = get_tenant_sessionmaker(school.tenant_db_name)()
+    Tenant DB provisioning + table creation happens first, outside that
+    transaction, since PostgreSQL can't run CREATE DATABASE inside any
+    transaction at all (2PC or not). That's fine: it's idempotent-safe to
+    retry (provision_tenant_database checks pg_database before creating),
+    so if the atomic write below fails, re-enrolling the same slug just
+    re-provisions the same now-empty tenant DB rather than leaving anything
+    inconsistent — the slug-uniqueness check below only ever passes once a
+    School row actually committed.
+    """
+    precheck = SessionLocal()
     try:
-        tenant_session.add(
+        if precheck.query(School).filter_by(slug=payload.slug).first() is not None:
+            raise HTTPException(status_code=409, detail="A school with this slug already exists")
+    finally:
+        precheck.close()
+
+    tenant_db_name = f"tenant_{payload.slug.replace('-', '_')}"
+    provision_tenant_database(tenant_db_name)
+    TenantBase.metadata.create_all(get_tenant_engine(tenant_db_name))
+
+    db = get_twophase_session(tenant_db_name)
+    try:
+        school = School(
+            name=payload.name,
+            slug=payload.slug,
+            tenant_db_name=tenant_db_name,
+            status="trial",
+            timezone=payload.timezone,
+        )
+        db.add(school)
+        db.flush()  # need school.id before the Subscription row
+
+        db.add(Subscription(school_id=school.id, status="trialing"))
+        db.add(
             StaffUser(
                 name=payload.admin_name,
                 email=payload.admin_email,
@@ -76,9 +92,10 @@ def enroll_school(payload: SchoolEnrollRequest, platform_db: Session = Depends(g
                 role="admin",
             )
         )
-        tenant_session.commit()
+        db.commit()
+        return school
+    except Exception:
+        db.rollback()
+        raise
     finally:
-        tenant_session.close()
-
-    platform_db.commit()
-    return school
+        db.close()

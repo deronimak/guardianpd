@@ -16,7 +16,7 @@ import stripe
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_platform_admin
+from app.api.deps import require_platform_staff
 from app.core.config import settings
 from app.db.platform import get_platform_db
 from app.models.platform import School, Subscription
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/platform", tags=["billing"])
 
 @router.patch(
     "/schools/{school_id}/subscription",
-    dependencies=[Depends(require_platform_admin)],
+    dependencies=[Depends(require_platform_staff)],
 )
 def set_subscription_status(
     school_id: uuid.UUID,
@@ -51,7 +51,7 @@ def set_subscription_status(
 @router.post(
     "/schools/{school_id}/billing/checkout-session",
     response_model=CheckoutSessionResponse,
-    dependencies=[Depends(require_platform_admin)],
+    dependencies=[Depends(require_platform_staff)],
 )
 def create_checkout_session(school_id: uuid.UUID, platform_db: Session = Depends(get_platform_db)) -> dict:
     if not settings.stripe_secret_key or not settings.stripe_price_id:
@@ -77,7 +77,7 @@ def create_checkout_session(school_id: uuid.UUID, platform_db: Session = Depends
 
 @router.post("/billing/webhook")
 async def stripe_webhook(request: Request, platform_db: Session = Depends(get_platform_db)) -> dict:
-    """Not gated by X-Platform-Admin-Key — Stripe calls this directly, and
+    """Not gated by require_platform_staff — Stripe calls this directly, and
     authenticity is verified via the webhook signature instead.
     """
     if not settings.stripe_webhook_secret:

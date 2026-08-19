@@ -13,3 +13,7 @@ qrcode[pil]>=7.4
 reportlab>=4.2
 stripe>=11.1
 firebase-admin>=6.5
+# zoneinfo (stdlib) needs an IANA tz database — Windows has no OS-level
+# one, so this ships it. Harmless no-op on Linux/macOS, which use the
+# system's copy instead.
+tzdata>=2024.1

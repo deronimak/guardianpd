@@ -26,12 +26,6 @@ class Settings(BaseSettings):
     smtp_from_email: str = "attendance@example.com"
     smtp_use_tls: bool = True
 
-    # Shared-secret gate for /platform/* ops routes (school enrollment,
-    # billing). Not a full ops-staff auth system (PlatformStaffUser has no
-    # login endpoint yet) — just enough to stop these from being wide open,
-    # since they were previously unauthenticated entirely.
-    platform_admin_key: str = "change-me-dev-only"
-
     # Push notifications on scan (ARCHITECTURE.md §5 point 5). Requires a
     # real Firebase project's service-account JSON — left blank by default
     # so the scan flow logs instead of sending, same fallback pattern as

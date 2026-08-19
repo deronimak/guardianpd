@@ -21,13 +21,15 @@ class School(PlatformBase):
     status: Mapped[str] = mapped_column(String(20), default="trial")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    # Welfare-email job config (ARCHITECTURE.md §7). Cutoff times are naive
-    # (compared against server local time) — a real deployment spanning
-    # schools in different timezones needs a timezone field here too; this
-    # scaffold assumes one server timezone == every school's timezone.
+    # Welfare-email job config (ARCHITECTURE.md §7). Cutoff times are local
+    # wall-clock times in this school's own timezone (IANA identifier, e.g.
+    # "America/New_York") — app/jobs/welfare_check.py converts UTC "now"
+    # into each school's local time before comparing, so schools in
+    # different timezones are handled correctly.
     welfare_email_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     drop_off_cutoff_time: Mapped[dt_time] = mapped_column(Time, default=dt_time(9, 30))
     pickup_cutoff_time: Mapped[dt_time] = mapped_column(Time, default=dt_time(18, 0))
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
 
 
 class Subscription(PlatformBase):

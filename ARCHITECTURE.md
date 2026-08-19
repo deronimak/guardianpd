@@ -56,7 +56,7 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 - Billing events arrive via webhook (payment succeeded/failed, subscription canceled) and update `Subscription` in the Platform DB — this is the one place billing logic touches, it never reaches into tenant DBs.
 - School enrollment (your side): create `School` row → provision new tenant database + run migrations → create first `StaffUser` (school admin) → send them an invite → `Subscription` starts in `trialing` or `active` depending on your sales flow.
 
-**Implementation status**: checkout-session creation and the webhook handler (`checkout.session.completed` / `invoice.payment_failed` / `customer.subscription.deleted`) are built (`app/api/routes/billing.py`), gated by a shared `X-Platform-Admin-Key` rather than real ops-staff auth (`PlatformStaffUser` has no login endpoint yet — see README). Needs your own Stripe account/API keys to actually run; without them, checkout-session creation returns a `501` rather than a fake URL.
+**Implementation status**: checkout-session creation and the webhook handler (`checkout.session.completed` / `invoice.payment_failed` / `customer.subscription.deleted`) are built (`app/api/routes/billing.py`), gated by a real `PlatformStaffUser` login (§9) rather than the shared admin key this used to be. Needs your own Stripe account/API keys to actually run; without them, checkout-session creation returns a `501` rather than a fake URL.
 
 ## 5. QR code security model
 
@@ -105,7 +105,7 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 **Implementation notes** (`app/jobs/welfare_check.py`):
 - Idempotency comes from `WelfareAlertLog`'s unique constraint, not from tracking "did the job run today" — this makes it safe to invoke the job frequently (e.g. every 15 minutes) via an external scheduler rather than needing precise once-daily triggering. See README for cron / Windows Task Scheduler examples.
 - `ExpectedAbsence` can be created two ways: staff-authenticated (`POST /students/{id}/expected-absences`, `app/api/routes/absences.py`) or parent self-service (`POST /parent/me/schools/{slug}/students/{id}/expected-absences`, `app/api/routes/parent.py`) — the latter checks the parent actually has a `GuardianStudentLink` to that student before writing anything.
-- Cutoff-time comparison uses naive server-local time, not each school's own timezone — fine for a single-timezone pilot, but a real multi-region deployment needs a timezone field on `School`.
+- Cutoff-time comparison is timezone-aware per school (`School.timezone`, an IANA identifier set at enrollment) — UTC "now" is converted into each school's own local time independently before comparing against its cutoffs, so schools in different timezones are evaluated correctly in the same job run.
 
 ## 8. Parent account & onboarding
 
@@ -122,7 +122,8 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 
 - **API**: REST (NestJS or FastAPI). NestJS pairs naturally if you want TypeScript across app+backend.
 - **Database**: PostgreSQL — one Platform DB, one Tenant DB per school (§2). A connection-routing layer resolves `school_id` → tenant connection at request time.
-- **Auth**: JWT. Parent/staff both authenticate against the Platform DB first (`PlatformUser` / a platform-level staff-login-resolver), then requests carry a resolved `school_id` used to route to the right tenant DB.
+- **Auth**: JWT. Parent/staff both authenticate against the Platform DB first (`PlatformUser` / a platform-level staff-login-resolver), then requests carry a resolved `school_id` used to route to the right tenant DB. Platform-ops actions (school enrollment, billing — §4) use a separate `PlatformStaffUser` login rather than a shared secret; bootstrap the first account with `python -m app.jobs.create_platform_staff` since there's no self-service signup for it.
+- **Cross-database writes**: guardian creation and school enrollment each touch both the Platform DB and one Tenant DB. These commit atomically via PostgreSQL two-phase commit (`app/db/twophase.py`, `Session(twophase=True)`) — either both writes land or neither does. DDL that can't participate in any transaction (`CREATE DATABASE` when provisioning a new tenant) runs separately beforehand; it's idempotent-safe to retry, so a failure in the atomic part just means re-provisioning the same (still-empty) tenant DB rather than leaving anything inconsistent.
 - **Push notifications**: Firebase Cloud Messaging.
 - **Email**: separate transactional provider from push (§7).
 - **Scheduled jobs**: a job runner (e.g., a queue + worker, or cron) iterates all active schools and runs the welfare check per tenant DB — needs to be designed so one school's slow/broken DB connection doesn't stall the others.

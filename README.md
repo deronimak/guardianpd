@@ -12,24 +12,23 @@ mobile/     Flutter app (parent + staff/admin roles in one codebase)
 ## What's scaffolded vs. not yet built
 
 **Working now:**
-- Platform DB / tenant DB split, with per-school tenant provisioning (`POST /platform/schools`, gated by an admin key — see below)
+- Platform DB / tenant DB split, with per-school tenant provisioning (`POST /platform/schools`, gated by a real platform-staff login — see "Platform staff accounts" below)
 - Signed, static, revocable QR tokens (`app/core/security.py`)
 - Full scan flow: subscription gate → signature check → revocation check → per-child authorization check → attendance write, with flagged events on unauthorized attempts
 - Staff login (JWT) and guardian creation + QR issuance
 - Printed QR credential as a downloadable PDF (`GET /guardians/{id}/qr-credential.pdf`)
-- Welfare/absence email job (`app/jobs/welfare_check.py`) — see "Welfare email job" below
+- Welfare/absence email job (`app/jobs/welfare_check.py`), timezone-aware per school — see "Welfare email job" below
 - Parent account activation + login (platform-level, spans every school a parent's children attend) and a linked-children list
 - Real-time push notification fan-out on every scan (success and unauthorized-attempt cases), best-effort — one bad device token can't fail the scan or block other guardians' notifications, and dead tokens get pruned automatically — see "Push notifications" below
 - Stripe checkout-session creation + webhook handling for subscription status — see "Billing" below
-- Platform ops console (`/admin`, same-origin static page) to enroll schools and override subscription status without curl
+- Platform ops console (`/admin`, same-origin static page) to enroll schools and override subscription status, with a real login instead of curl + a shared key
 - Flutter app: role selection, staff login with live camera QR scanning, parent login/activation with a real linked-children list, and (Android) real push notification registration via Firebase — see "Push notifications" for the one file you still need to add
 - Parent-facing attendance history and planned-absence marking (`GET`/`POST /parent/me/schools/{slug}/students/{id}/...`) — tap a child in My Children to see it. Same authorization boundary as the scan flow: a parent can only read/write for a student they're actually linked to.
+- Atomic platform-DB + tenant-DB writes (guardian creation, school enrollment) via PostgreSQL two-phase commit — see "Cross-database atomicity" below
+- Real platform-staff auth (`PlatformStaffUser` login) replacing the old shared admin key — see "Platform staff accounts" below
 
 **Not yet built** (see ARCHITECTURE.md for the design):
-- Cross-database consistency handling for the platform-DB/tenant-DB writes in guardian creation and school enrollment (currently two separate commits, not atomic — see comments in `app/api/routes/guardians.py` and `schools.py`)
-- Per-school timezone handling for the welfare job (it currently compares cutoff times against naive server-local time)
 - Notification-preferences screen in the parent app
-- A real ops-staff auth system (`PlatformStaffUser` has no login endpoint — platform routes are gated by a single shared admin key instead, see below)
 - **iOS is blocked in this dev environment, not just undone**: push notification wiring, and building/running the app at all, both require Xcode on macOS. This project was built entirely on Windows, which has no path to either — someone with a Mac needs to pick this up (`flutterfire configure` + `GoogleService-Info.plist`, then the standard `firebase_messaging` iOS setup)
 - Stripe SDK wiring in the Flutter app itself (backend is ready; see "Billing" below)
 
@@ -63,16 +62,24 @@ uvicorn app.main:app --reload
 
 Visit `http://127.0.0.1:8000/docs` for the interactive API docs.
 
-Enroll your first school (requires the `X-Platform-Admin-Key` header — matches `PLATFORM_ADMIN_KEY` in `.env`, defaults to `change-me-dev-only`):
+Bootstrap a platform-staff account (needed before you can enroll a school — see "Platform staff accounts" below), then log in and enroll your first school:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/platform/schools \
-  -H "Content-Type: application/json" \
-  -H "X-Platform-Admin-Key: change-me-dev-only" \
-  -d '{"name":"Example High","slug":"example-high","admin_name":"Jane Admin","admin_email":"jane@example-high.example.com","admin_temp_password":"changeme123"}'
+python -m app.jobs.create_platform_staff --email you@example.com --name "Your Name"
 ```
 
-This provisions the school's own Postgres database automatically and seeds its first staff admin account.
+```bash
+TOKEN=$(curl -s -X POST http://127.0.0.1:8000/auth/platform/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"<what you set above>"}' | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+curl -X POST http://127.0.0.1:8000/platform/schools \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"name":"Example High","slug":"example-high","admin_name":"Jane Admin","admin_email":"jane@example-high.example.com","admin_temp_password":"changeme123","timezone":"America/New_York"}'
+```
+
+This provisions the school's own Postgres database automatically and seeds its first staff admin account — the `School`/`Subscription`/`StaffUser` rows across both databases are written atomically (see "Cross-database atomicity" below).
 
 ## Mobile app setup
 
@@ -118,7 +125,7 @@ Building with these plugins on Windows also needs **Developer Mode** enabled (`s
 
 ## Billing
 
-Stripe checkout-session creation and a webhook that updates `Subscription.status` (`active` / `past_due` / `canceled`) are implemented (`app/api/routes/billing.py`), gated by `X-Platform-Admin-Key` like school enrollment. You need your own Stripe account:
+Stripe checkout-session creation and a webhook that updates `Subscription.status` (`active` / `past_due` / `canceled`) are implemented (`app/api/routes/billing.py`), gated by platform-staff login like school enrollment (the webhook itself isn't — Stripe calls it directly, verified by signature instead). You need your own Stripe account:
 
 1. Set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, `STRIPE_WEBHOOK_SECRET` in `.env` (test-mode keys are fine for development).
 2. `POST /platform/schools/{school_id}/billing/checkout-session` returns a `checkout_url` to redirect a school admin to.
@@ -126,9 +133,24 @@ Stripe checkout-session creation and a webhook that updates `Subscription.status
 
 Without Stripe configured, the checkout-session endpoint returns a clear `501` rather than a fake URL.
 
-## Platform admin key
+## Platform staff accounts
 
-`POST /platform/schools` and the billing endpoints are gated by a shared secret (`X-Platform-Admin-Key` header, matching `PLATFORM_ADMIN_KEY` in `.env`) rather than real per-user auth — `PlatformStaffUser` has no login endpoint yet. Change `PLATFORM_ADMIN_KEY` from its default before this goes anywhere near production.
+`POST /platform/schools` and the billing endpoints are gated by a real `PlatformStaffUser` login (`POST /auth/platform/login`, JWT with `scope: platform_ops`) — this used to be a single shared `X-Platform-Admin-Key`, which has been removed entirely.
+
+There's no self-service signup for these accounts (they grant access to enroll schools and manage billing across every tenant), so create them with:
+
+```bash
+cd backend
+python -m app.jobs.create_platform_staff --email you@example.com --name "Your Name"
+```
+
+You'll be prompted for a password interactively (not passed as an argument, so it doesn't end up in shell history). Run it again for each teammate who needs ops access.
+
+## Cross-database atomicity
+
+Guardian creation and school enrollment each write to two physical databases (platform DB + one tenant DB) as a single atomic unit, via PostgreSQL two-phase commit (`app/db/twophase.py`, using SQLAlchemy's `Session(twophase=True)`) — either both writes land or neither does, even if the process crashes mid-way.
+
+This needs `max_prepared_transactions > 0` on the Postgres server (0 — disabled — is the default); `docker-compose.yml` sets it to 20. If you're running Postgres yourself rather than via the provided compose file, set this in `postgresql.conf` and restart Postgres (it can't be changed at runtime).
 
 ## Welfare email job
 
@@ -152,7 +174,9 @@ Linux/macOS cron:
 
 Windows Task Scheduler: create a task that runs `C:\path\to\backend\.venv\Scripts\python.exe -m app.jobs.welfare_check` with "Start in" set to `C:\path\to\backend`, triggered every 15 minutes.
 
-**Per-school controls:** each school's `welfare_email_enabled`, `drop_off_cutoff_time`, and `pickup_cutoff_time` live on the `School` row in the platform DB (no API endpoint to change them yet — set directly via SQL or a Python shell for now).
+**Timezones:** cutoff times are local wall-clock times in each school's own timezone (`School.timezone`, an IANA identifier like `America/New_York`, set at enrollment — see the ops console or the `timezone` field on `POST /platform/schools`). The job converts UTC "now" into each school's local time independently, so schools in different timezones are evaluated correctly against the same run. Uses the stdlib `zoneinfo` module; `tzdata` is bundled as a dependency since Windows has no OS-level IANA timezone database.
+
+**Per-school controls:** each school's `welfare_email_enabled`, `drop_off_cutoff_time`, `pickup_cutoff_time`, and `timezone` live on the `School` row in the platform DB. `timezone` is set at enrollment; the others have no API endpoint to change post-enrollment yet — set directly via SQL or a Python shell for now.
 
 ## Tenant database migrations (once schema changes are needed)
 

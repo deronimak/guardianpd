@@ -6,6 +6,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: platform
+    # max_prepared_transactions=0 (the default) disables two-phase commit
+    # entirely — needed for atomic platform-DB + tenant-DB writes, see
+    # app/db/twophase.py.
+    command: ["postgres", "-c", "max_prepared_transactions=20"]
     ports:
       - "5432:5432"
     volumes:

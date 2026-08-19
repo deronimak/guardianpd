@@ -34,13 +34,13 @@
     gap: 12px;
   }
   header h1 { font-size: 18px; margin: 0; }
-  header .key-row { display: flex; align-items: center; gap: 8px; }
-  header input[type="password"], header input[type="text"] {
+  header .auth-row { display: flex; align-items: center; gap: 8px; }
+  header input[type="password"], header input[type="text"], header input[type="email"] {
     padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 13px;
-    width: 220px;
+    width: 180px;
   }
   main { max-width: 1000px; margin: 0 auto; padding: 24px 32px 64px; }
   .panel {
@@ -123,11 +123,7 @@
 
 <header>
   <h1>Platform Ops Console</h1>
-  <div class="key-row">
-    <span id="key-indicator"><span class="status-dot unset"></span>No admin key set</span>
-    <input type="password" id="admin-key" placeholder="X-Platform-Admin-Key" />
-    <button class="secondary" onclick="saveKey()">Save key</button>
-  </div>
+  <div class="auth-row" id="auth-area"></div>
 </header>
 
 <main>
@@ -150,9 +146,25 @@
         <label>Admin email</label>
         <input required type="email" id="f-admin-email" placeholder="jane@example-high.example.com" />
       </div>
-      <div class="full">
+      <div>
         <label>Admin temporary password (min 8 chars)</label>
         <input required minlength="8" id="f-admin-password" placeholder="changeme123" />
+      </div>
+      <div>
+        <label>Timezone (IANA, drives welfare-job cutoffs)</label>
+        <input required id="f-timezone" value="UTC" list="tz-suggestions" placeholder="America/New_York" />
+        <datalist id="tz-suggestions">
+          <option value="UTC"></option>
+          <option value="America/New_York"></option>
+          <option value="America/Chicago"></option>
+          <option value="America/Denver"></option>
+          <option value="America/Los_Angeles"></option>
+          <option value="Europe/London"></option>
+          <option value="Europe/Berlin"></option>
+          <option value="Asia/Kolkata"></option>
+          <option value="Asia/Tokyo"></option>
+          <option value="Australia/Sydney"></option>
+        </datalist>
       </div>
       <div class="full">
         <button type="submit">Enroll school</button>
@@ -163,7 +175,7 @@
   <div class="panel">
     <h2>Schools <span class="hint">GET /platform/schools</span></h2>
     <div id="schools-container">
-      <p class="empty">Set your admin key above, then click Refresh.</p>
+      <p class="empty">Log in above, then click Refresh.</p>
     </div>
     <div style="margin-top: 12px;">
       <button class="secondary" onclick="loadSchools()">Refresh</button>
@@ -179,24 +191,59 @@
 <script>
   const STATUSES = ["trialing", "active", "past_due", "canceled"];
 
-  function getKey() {
-    return localStorage.getItem("platform_admin_key") || "";
+  function getToken() {
+    return localStorage.getItem("platform_staff_token") || "";
   }
 
-  function saveKey() {
-    const value = document.getElementById("admin-key").value.trim();
-    if (!value) return;
-    localStorage.setItem("platform_admin_key", value);
-    document.getElementById("admin-key").value = "";
-    updateKeyIndicator();
-    log("Admin key saved locally (not sent anywhere except as a request header).", true);
+  function setToken(token) {
+    localStorage.setItem("platform_staff_token", token);
   }
 
-  function updateKeyIndicator() {
-    const has = !!getKey();
-    document.getElementById("key-indicator").innerHTML = has
-      ? '<span class="status-dot set"></span>Admin key set'
-      : '<span class="status-dot unset"></span>No admin key set';
+  function clearToken() {
+    localStorage.removeItem("platform_staff_token");
+  }
+
+  function renderAuthArea() {
+    const area = document.getElementById("auth-area");
+    if (getToken()) {
+      area.innerHTML = `
+        <span><span class="status-dot set"></span>Logged in</span>
+        <button class="secondary" onclick="logout()">Log out</button>`;
+      return;
+    }
+    area.innerHTML = `
+      <span class="status-dot unset"></span>
+      <input type="email" id="login-email" placeholder="you@example.com" autocomplete="username" />
+      <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
+      <button class="secondary" onclick="login()">Log in</button>`;
+  }
+
+  async function login() {
+    const email = document.getElementById("login-email").value.trim();
+    const password = document.getElementById("login-password").value;
+    if (!email || !password) return;
+    try {
+      const response = await fetch("/auth/platform/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : response.status);
+      setToken(body.access_token);
+      renderAuthArea();
+      log(`Logged in as ${email}.`, true);
+      loadSchools();
+    } catch (e) {
+      log(`Login failed: ${e.message}`, false);
+    }
+  }
+
+  function logout() {
+    clearToken();
+    renderAuthArea();
+    document.getElementById("schools-container").innerHTML = '<p class="empty">Log in above, then click Refresh.</p>';
+    log("Logged out.", true);
   }
 
   function log(message, ok) {
@@ -210,13 +257,17 @@
   }
 
   async function apiFetch(path, options = {}) {
-    const key = getKey();
+    const token = getToken();
     const headers = Object.assign({ "Content-Type": "application/json" }, options.headers || {});
-    if (key) headers["X-Platform-Admin-Key"] = key;
+    if (token) headers["Authorization"] = `Bearer ${token}`;
     const response = await fetch(path, Object.assign({}, options, { headers }));
     const text = await response.text();
     let body;
     try { body = JSON.parse(text); } catch { body = text; }
+    if (response.status === 401) {
+      clearToken();
+      renderAuthArea();
+    }
     if (!response.ok) {
       const detail = typeof body === "object" ? JSON.stringify(body) : body;
       throw new Error(`${response.status} ${detail}`);
@@ -232,6 +283,7 @@
       admin_name: document.getElementById("f-admin-name").value,
       admin_email: document.getElementById("f-admin-email").value,
       admin_temp_password: document.getElementById("f-admin-password").value,
+      timezone: document.getElementById("f-timezone").value,
     };
     try {
       const school = await apiFetch("/platform/schools", { method: "POST", body: JSON.stringify(payload) });
@@ -264,6 +316,7 @@
         return `
           <tr>
             <td><strong>${s.name}</strong><br/><span style="color:var(--text-muted)">${s.slug}</span></td>
+            <td>${s.timezone}</td>
             <td>${badgeHtml(s.subscription_status)}<br/><span style="color:var(--text-muted); font-size:11px;">${s.subscription_plan}</span></td>
             <td>${new Date(s.created_at).toLocaleDateString()}</td>
             <td>
@@ -277,7 +330,7 @@
       }).join("");
       container.innerHTML = `
         <table>
-          <thead><tr><th>School</th><th>Subscription</th><th>Enrolled</th><th>Actions</th></tr></thead>
+          <thead><tr><th>School</th><th>Timezone</th><th>Subscription</th><th>Enrolled</th><th>Actions</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`;
     } catch (e) {
@@ -309,8 +362,8 @@
     }
   }
 
-  updateKeyIndicator();
-  if (getKey()) loadSchools();
+  renderAuthArea();
+  if (getToken()) loadSchools();
 </script>
 
 </body>

@@ -14,6 +14,7 @@ from app.api.routes import (
     health,
     parent,
     parent_auth,
+    platform_auth,
     schools,
     students,
     welfare,
@@ -39,6 +40,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(platform_auth.router)
 app.include_router(schools.router)
 app.include_router(billing.router)
 app.include_router(auth.router)
@@ -52,7 +54,6 @@ app.include_router(welfare.router)
 
 # Platform ops console (ARCHITECTURE.md §10) — a plain static page, not
 # part of the Flutter app, served same-origin so it needs no CORS config.
-# Internal tool: gated by the X-Platform-Admin-Key it prompts for, not a
-# real login.
+# Logs in against POST /auth/platform/login like any other client.
 _STATIC_ADMIN_DIR = os.path.join(os.path.dirname(__file__), "static", "admin")
 app.mount("/admin", StaticFiles(directory=_STATIC_ADMIN_DIR, html=True), name="admin")

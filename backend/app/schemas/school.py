@@ -1,7 +1,8 @@
 import uuid
+import zoneinfo
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class SchoolEnrollRequest(BaseModel):
@@ -10,6 +11,16 @@ class SchoolEnrollRequest(BaseModel):
     admin_name: str
     admin_email: EmailStr
     admin_temp_password: str = Field(min_length=8)
+    timezone: str = Field(default="UTC", description="IANA timezone identifier, e.g. 'America/New_York' — drives welfare-job cutoff times")
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, value: str) -> str:
+        try:
+            zoneinfo.ZoneInfo(value)
+        except zoneinfo.ZoneInfoNotFoundError:
+            raise ValueError(f"Unknown IANA timezone: {value!r}")
+        return value
 
 
 class SchoolOut(BaseModel):
@@ -19,6 +30,7 @@ class SchoolOut(BaseModel):
     name: str
     slug: str
     status: str
+    timezone: str
 
 
 class SchoolWithSubscriptionOut(BaseModel):
@@ -26,6 +38,7 @@ class SchoolWithSubscriptionOut(BaseModel):
     name: str
     slug: str
     status: str
+    timezone: str
     created_at: datetime
     subscription_status: str
     subscription_plan: str
