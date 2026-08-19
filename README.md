@@ -19,9 +19,10 @@ mobile/     Flutter app (parent + staff/admin roles in one codebase)
 - Printed QR credential as a downloadable PDF (`GET /guardians/{id}/qr-credential.pdf`)
 - Welfare/absence email job (`app/jobs/welfare_check.py`) — see "Welfare email job" below
 - Parent account activation + login (platform-level, spans every school a parent's children attend) and a linked-children list
-- Real-time push notification fan-out on every scan (success and unauthorized-attempt cases) — see "Push notifications" below
+- Real-time push notification fan-out on every scan (success and unauthorized-attempt cases), best-effort — one bad device token can't fail the scan or block other guardians' notifications, and dead tokens get pruned automatically — see "Push notifications" below
 - Stripe checkout-session creation + webhook handling for subscription status — see "Billing" below
-- Flutter app: role selection, staff login with live camera QR scanning, parent login/activation with a real linked-children list
+- Platform ops console (`/admin`, same-origin static page) to enroll schools and override subscription status without curl
+- Flutter app: role selection, staff login with live camera QR scanning, parent login/activation with a real linked-children list, and (Android) real push notification registration via Firebase — see "Push notifications" for the one file you still need to add
 
 **Not yet built** (see ARCHITECTURE.md for the design):
 - Cross-database consistency handling for the platform-DB/tenant-DB writes in guardian creation and school enrollment (currently two separate commits, not atomic — see comments in `app/api/routes/guardians.py` and `schools.py`)
@@ -29,7 +30,8 @@ mobile/     Flutter app (parent + staff/admin roles in one codebase)
 - Parent-facing `ExpectedAbsence` creation (the endpoint exists but is staff-only for now — a parent-facing version is a small addition now that parent auth exists)
 - Attendance history / notification-preferences screens in the parent app
 - A real ops-staff auth system (`PlatformStaffUser` has no login endpoint — platform routes are gated by a single shared admin key instead, see below)
-- Firebase/Stripe SDK wiring in the Flutter app itself (backend is ready for both; see "Push notifications" and "Billing" below for what's still manual)
+- iOS push notification wiring (Android-only for now — see "Push notifications")
+- Stripe SDK wiring in the Flutter app itself (backend is ready; see "Billing" below)
 
 ## Backend setup
 
@@ -102,7 +104,17 @@ On every scan, all guardians linked to the child get a push notification (succes
 
 **Local dev:** leave `FIREBASE_CREDENTIALS_JSON` unset — pushes are logged instead of sent (`app/core/push.py`), same fallback pattern as email.
 
-**To go live:** you need your own Firebase project (Firebase console → Project settings → Service accounts → Generate new private key). Set `FIREBASE_CREDENTIALS_JSON` in `.env` to that JSON key file's contents (as a single-line value). A device registers its push token via `POST /parent/me/devices` — but the Flutter app doesn't have the `firebase_messaging` SDK wired up yet (that needs `google-services.json`/`GoogleService-Info.plist` from your Firebase project, which don't exist without one), so getting a real device token is the remaining manual step on the mobile side.
+**Backend — to go live:** you need your own Firebase project (Firebase console → Project settings → Service accounts → Generate new private key). Set `FIREBASE_CREDENTIALS_JSON` in `.env` to that JSON key file's contents (as a single-line value).
+
+**Mobile (Android) — wired up, needs one file from you:** the app calls `initializeAndRegisterPush()` on parent login (`lib/core/push_registration.dart`), which requests notification permission, gets a real FCM token, and registers it via `POST /parent/me/devices`. This deliberately does **not** need the Firebase CLI or `flutterfire configure` (which would require logging into your Google account) — Android-only Firebase setup just needs one file:
+
+1. In the Firebase console for the same project as your backend key, add an Android app with package name `com.schoolqr.mobile`.
+2. Download the `google-services.json` it gives you.
+3. Save it as `mobile/android/app/google-services.json`.
+
+Without that file, Android builds fail with a clear "File google-services.json is missing" error — everything else (web, Windows) is unaffected. iOS isn't wired up (needs `GoogleService-Info.plist` + Xcode, which this Windows setup can't build anyway).
+
+Building with these plugins on Windows also needs **Developer Mode** enabled (`start ms-settings:developers`, then toggle it on) — Flutter needs symlink support to build with native Android plugins.
 
 ## Billing
 

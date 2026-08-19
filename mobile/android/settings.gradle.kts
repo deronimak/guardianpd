@@ -20,6 +20,11 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.7.0" apply false
     id("org.jetbrains.kotlin.android") version "1.8.22" apply false
+    // Reads android/app/google-services.json at build time to configure
+    // Firebase natively. The file doesn't exist yet — see README for how
+    // to get it from the Firebase console. Android builds will fail with
+    // a clear "File google-services.json is missing" error until it's added.
+    id("com.google.gms.google-services") version "4.4.2" apply false
 }
 
 include(":app")

@@ -39,6 +39,10 @@ dependencies:
   mobile_scanner: ^6.0.2
   # Talks to the FastAPI backend.
   http: ^1.2.2
+  # Push notifications on scan (ARCHITECTURE.md §5 point 5). Android-only
+  # wiring for now — see android/app/google-services.json note in README.
+  firebase_core: ^3.8.0
+  firebase_messaging: ^15.1.6
 
 dev_dependencies:
   flutter_test:

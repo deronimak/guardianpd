@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../core/parent_api_client.dart';
+import '../../core/push_registration.dart';
 
 /// Shows every child linked to this parent, aggregated across schools by
-/// the backend (ARCHITECTURE.md §2/§8). Attendance history, planned-absence
-/// marking, and notification preferences aren't built yet.
+/// the backend (ARCHITECTURE.md §2/§8). Attendance history and
+/// planned-absence marking aren't built yet.
 class ParentHomeScreen extends StatefulWidget {
   final ParentApiClient apiClient;
   const ParentHomeScreen({super.key, required this.apiClient});
@@ -20,6 +21,9 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
   void initState() {
     super.initState();
     _childrenFuture = widget.apiClient.myChildren();
+    // Fire-and-forget: push registration failing shouldn't block the
+    // parent from seeing their children list.
+    initializeAndRegisterPush(widget.apiClient);
   }
 
   @override
