@@ -8,13 +8,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_staff, get_school, get_tenant_db
 from app.core.email import send_email
 from app.core.qr_pdf import generate_qr_credential_pdf
-from app.core.security import generate_qr_token
+from app.core.security import generate_qr_token, verify_qr_token
 from app.db.twophase import get_twophase_session
 from app.models.platform import GuardianMembership, PlatformUser, School
-from app.models.tenant import Guardian, QRCredential
-from app.schemas.guardian import GuardianCreateRequest, GuardianOut
+from app.models.tenant import Guardian, GuardianStudentLink, QRCredential, Student
+from app.schemas.guardian import GuardianCreateRequest, GuardianLookupOut, GuardianOut
 
-router = APIRouter(prefix="/guardians", tags=["guardians"])
+router = APIRouter(prefix="/guardians", tags=["guardians"], dependencies=[Depends(get_current_staff)])
 
 _INVITE_TOKEN_VALIDITY = timedelta(days=7)
 
@@ -99,11 +99,48 @@ def create_guardian(
     return {"id": guardian.id, "name": guardian.name, "qr_token": token}
 
 
+@router.get("/lookup", response_model=GuardianLookupOut)
+def lookup_guardian_by_qr(
+    token: str,
+    school: School = Depends(get_school),
+    tenant_db: Session = Depends(get_tenant_db),
+) -> dict:
+    """Powers the staff scanner's student picker (ARCHITECTURE.md §6): after
+    a QR scan, staff need to see which children this guardian is actually
+    authorized to drop off/pick up before recording an attendance event —
+    this is that lookup, done before POST /attendance/scan rather than by
+    listing every student at the school.
+
+    Mirrors the same signature/revocation checks as the scan endpoint, but
+    this alone is NOT an attendance record — POST /attendance/scan
+    independently re-verifies authorization for whichever student staff
+    picks, so a stale/mismatched lookup result can't be used to bypass it.
+    """
+    decoded = verify_qr_token(token)
+    if decoded is None or decoded.get("sid") != str(school.id):
+        raise HTTPException(status_code=400, detail="Invalid QR code")
+
+    credential = tenant_db.query(QRCredential).filter_by(token=token, revoked_at=None).first()
+    if credential is None:
+        raise HTTPException(status_code=400, detail="This QR code is unrecognized or has been revoked")
+
+    guardian = tenant_db.get(Guardian, credential.guardian_id)
+    if guardian is None:
+        raise HTTPException(status_code=404, detail="Unknown guardian")
+
+    students = (
+        tenant_db.query(Student)
+        .join(GuardianStudentLink, GuardianStudentLink.student_id == Student.id)
+        .filter(GuardianStudentLink.guardian_id == guardian.id, GuardianStudentLink.is_authorized_pickup)
+        .all()
+    )
+    return {"guardian_id": guardian.id, "guardian_name": guardian.name, "students": students}
+
+
 @router.get("/{guardian_id}/qr-credential.pdf")
 def download_qr_credential_pdf(
     guardian_id: uuid.UUID,
     school: School = Depends(get_school),
-    staff: dict = Depends(get_current_staff),
     tenant_db: Session = Depends(get_tenant_db),
 ) -> Response:
     """The printed handout from ARCHITECTURE.md §8/§5 — staff prints this

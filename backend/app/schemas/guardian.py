@@ -13,3 +13,15 @@ class GuardianOut(BaseModel):
     id: uuid.UUID
     name: str
     qr_token: str
+
+
+class LinkedStudentOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    grade: str | None = None
+
+
+class GuardianLookupOut(BaseModel):
+    guardian_id: uuid.UUID
+    guardian_name: str
+    students: list[LinkedStudentOut]

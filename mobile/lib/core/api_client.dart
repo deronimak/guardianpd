@@ -128,6 +128,21 @@ class ApiClient {
     }
   }
 
+  /// Looks up which students a scanned guardian is authorized for, so staff
+  /// can pick the right child before recording the attendance event. This
+  /// is a read-only convenience — POST /attendance/scan independently
+  /// re-verifies authorization regardless of what this returns.
+  Future<Map<String, dynamic>> lookupGuardianByQr(String qrToken) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/guardians/lookup?token=${Uri.encodeQueryComponent(qrToken)}'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   /// Scans a guardian's QR credential for one child. See the security flow
   /// in ARCHITECTURE.md §5/§6 — this simply forwards to the backend, which
   /// does the signature/revocation/authorization checks.
