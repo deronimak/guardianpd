@@ -210,7 +210,7 @@ def run_welfare_checks_for_all_schools(now: dt.datetime | None = None) -> None:
             platform_db.query(School)
             .join(Subscription, Subscription.school_id == School.id)
             .filter(
-                Subscription.status.in_(("trialing", "active")),  # ARCHITECTURE.md §4: lapsed schools lose this job
+                Subscription.status == "active",  # ARCHITECTURE.md §4: suspended schools lose this job
                 School.welfare_email_enabled.is_(True),
             )
             .all()

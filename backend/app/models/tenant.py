@@ -22,7 +22,10 @@ class StaffUser(TenantBase):
     name: Mapped[str] = mapped_column(String(255))
     email: Mapped[str] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(50), default="admin")  # admin / teacher / front_desk
+    # admin (School Admin, created at school enrollment) / staff (School
+    # Staff, created by a School Admin via POST /staff) — enforced by
+    # app/api/deps.py's require_school_admin, not just descriptive.
+    role: Mapped[str] = mapped_column(String(50), default="admin")
 
 
 class Guardian(TenantBase):

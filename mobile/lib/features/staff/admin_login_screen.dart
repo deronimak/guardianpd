@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
-import 'staff_home_screen.dart';
+import 'admin_home_screen.dart';
 
-class StaffLoginScreen extends StatefulWidget {
-  const StaffLoginScreen({super.key});
+class AdminLoginScreen extends StatefulWidget {
+  const AdminLoginScreen({super.key});
 
   @override
-  State<StaffLoginScreen> createState() => _StaffLoginScreenState();
+  State<AdminLoginScreen> createState() => _AdminLoginScreenState();
 }
 
-class _StaffLoginScreenState extends State<StaffLoginScreen> {
+class _AdminLoginScreenState extends State<AdminLoginScreen> {
   final _schoolSlugController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -25,13 +25,13 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
     final client = ApiClient(schoolSlug: _schoolSlugController.text.trim());
     try {
       final role = await client.staffLogin(_emailController.text.trim(), _passwordController.text);
-      if (role != 'staff') {
-        setState(() => _error = 'This is a School Admin account — use the School Admin button instead.');
+      if (role != 'admin') {
+        setState(() => _error = 'This is a School Staff account — use the School Staff button instead.');
         return;
       }
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => StaffHomeScreen(apiClient: client)),
+        MaterialPageRoute(builder: (_) => AdminHomeScreen(apiClient: client)),
       );
     } catch (e) {
       setState(() => _error = 'Login failed: $e');
@@ -51,7 +51,7 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('School Staff Login')),
+      appBar: AppBar(title: const Text('School Admin Login')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -62,7 +62,8 @@ class _StaffLoginScreenState extends State<StaffLoginScreen> {
             ),
             TextField(
               controller: _emailController,
-              decoration: const InputDecoration(labelText: 'Username'),
+              decoration: const InputDecoration(labelText: 'Email'),
+              keyboardType: TextInputType.emailAddress,
             ),
             TextField(
               controller: _passwordController,

@@ -2,7 +2,7 @@
     <!-- Android 13+ requires this to show push notifications at runtime. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="mobile"
+        android:label="GuardianPD"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

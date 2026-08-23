@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Platform Ops Console</title>
+<title>GuardianPD Master Admin</title>
 <style>
   :root {
     --bg: #f5f6fa;
@@ -34,15 +34,10 @@
     gap: 12px;
   }
   header h1 { font-size: 18px; margin: 0; }
-  header .auth-row { display: flex; align-items: center; gap: 8px; }
-  header input[type="password"], header input[type="text"], header input[type="email"] {
-    padding: 8px 10px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 13px;
-    width: 180px;
-  }
-  main { max-width: 1000px; margin: 0 auto; padding: 24px 32px 64px; }
+  header .auth-row { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  header .auth-row a { color: var(--accent); text-decoration: none; cursor: pointer; }
+  header .auth-row a:hover { text-decoration: underline; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 32px 64px; }
   .panel {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -52,16 +47,16 @@
   }
   .panel h2 { font-size: 15px; margin: 0 0 16px; color: var(--text); }
   .panel h2 .hint { font-weight: 400; color: var(--text-muted); font-size: 12px; }
-  form.enroll { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  form.enroll label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
-  form.enroll input {
+  form.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  form label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+  form input {
     width: 100%;
     padding: 9px 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 13px;
   }
-  form.enroll .full { grid-column: 1 / -1; }
+  form .full { grid-column: 1 / -1; }
   button {
     background: var(--accent);
     color: #fff;
@@ -78,6 +73,8 @@
     border: 1px solid var(--accent);
   }
   button.secondary:hover { background: #eef2ff; }
+  button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  button.danger:hover { background: #fef2f2; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--text-muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border); }
@@ -92,13 +89,12 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
   }
-  .badge.active { background: #dcfce7; color: #166534; }
-  .badge.trialing { background: #fef9c3; color: #854d0e; }
-  .badge.past_due { background: #ffedd5; color: #9a3412; }
-  .badge.canceled { background: #fee2e2; color: #991b1b; }
+  .badge.active, .badge.paid { background: #dcfce7; color: #166534; }
+  .badge.suspended, .badge.overdue { background: #fee2e2; color: #991b1b; }
+  .badge.pending { background: #fef9c3; color: #854d0e; }
   .badge.none { background: #e5e7eb; color: #4b5563; }
   .row-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  select { padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
   #log {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px;
@@ -113,76 +109,190 @@
   }
   #log .ok { color: #86efac; }
   #log .err { color: #fca5a5; }
-  .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
-  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .status-dot.set { background: #22c55e; }
-  .status-dot.unset { background: #d1d5db; }
+
+  /* Centered login home page */
+  #login-home {
+    min-height: 70vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .login-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    width: 100%;
+    max-width: 360px;
+    text-align: center;
+  }
+  .login-card h2 { margin: 0 0 20px; font-size: 17px; }
+  .login-card input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+  .login-card button { width: 100%; padding: 10px; margin-top: 6px; }
+  .login-card .error { color: var(--danger); font-size: 12px; margin-bottom: 10px; }
+  .login-card .change-pw-link { display: block; margin-top: 16px; font-size: 12px; color: var(--accent); cursor: pointer; }
+
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    background: none;
+    color: var(--text-muted);
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  .tab-btn:hover { background: none; color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .detail-panel {
+    background: #f8f9ff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+  }
+  .detail-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 8px 0 0; }
+  .detail-panel dt { color: var(--text-muted); }
+  .filter-row { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+  .filter-row select { padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Platform Ops Console</h1>
+  <h1>GuardianPD Master Admin</h1>
   <div class="auth-row" id="auth-area"></div>
 </header>
 
-<main>
-  <div class="panel">
-    <h2>Enroll a school <span class="hint">POST /platform/schools</span></h2>
-    <form class="enroll" onsubmit="return enrollSchool(event)">
-      <div>
-        <label>School name</label>
-        <input required id="f-name" placeholder="Example High" />
-      </div>
-      <div>
-        <label>Slug</label>
-        <input required id="f-slug" placeholder="example-high" pattern="[a-z][a-z0-9-]{1,60}" />
-      </div>
-      <div>
-        <label>Admin name</label>
-        <input required id="f-admin-name" placeholder="Jane Admin" />
-      </div>
-      <div>
-        <label>Admin email</label>
-        <input required type="email" id="f-admin-email" placeholder="jane@example-high.example.com" />
-      </div>
-      <div>
-        <label>Admin temporary password (min 8 chars)</label>
-        <input required minlength="8" id="f-admin-password" placeholder="changeme123" />
-      </div>
-      <div>
-        <label>Timezone (IANA, drives welfare-job cutoffs)</label>
-        <input required id="f-timezone" value="UTC" list="tz-suggestions" placeholder="America/New_York" />
-        <datalist id="tz-suggestions">
-          <option value="UTC"></option>
-          <option value="America/New_York"></option>
-          <option value="America/Chicago"></option>
-          <option value="America/Denver"></option>
-          <option value="America/Los_Angeles"></option>
-          <option value="Europe/London"></option>
-          <option value="Europe/Berlin"></option>
-          <option value="Asia/Kolkata"></option>
-          <option value="Asia/Tokyo"></option>
-          <option value="Australia/Sydney"></option>
-        </datalist>
-      </div>
-      <div>
-        <label>Billing email (Paystack checkout contact — defaults to admin email)</label>
-        <input type="email" id="f-billing-email" placeholder="billing@example-high.example.com" />
-      </div>
-      <div class="full">
-        <button type="submit">Enroll school</button>
-      </div>
-    </form>
+<div id="login-home">
+  <div class="login-card">
+    <h2>Master Admin Login</h2>
+    <div class="error" id="login-error" style="display:none;"></div>
+    <input type="email" id="login-email" placeholder="you@example.com" autocomplete="username" />
+    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
+    <button onclick="login()">Log in</button>
+    <span class="change-pw-link" onclick="promptChangePassword()">Change password</span>
+  </div>
+</div>
+
+<main id="dashboard" style="display:none;">
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="schools" onclick="switchTab('schools')">Schools</button>
+    <button class="tab-btn" data-tab="billing" onclick="switchTab('billing')">Billing</button>
+    <button class="tab-btn" data-tab="manage" onclick="switchTab('manage')">Manage Subscription</button>
   </div>
 
-  <div class="panel">
-    <h2>Schools <span class="hint">GET /platform/schools</span></h2>
-    <div id="schools-container">
-      <p class="empty">Log in above, then click Refresh.</p>
+  <div class="tab-panel active" id="tab-schools">
+    <div class="panel">
+      <h2>Enroll a school <span class="hint">POST /platform/schools</span></h2>
+      <form class="grid" onsubmit="return enrollSchool(event)">
+        <div>
+          <label>School name</label>
+          <input required id="f-name" placeholder="Example High" />
+        </div>
+        <div>
+          <label>Slug (technical ID, lowercase-hyphenated)</label>
+          <input required id="f-slug" placeholder="example-high" pattern="[a-z][a-z0-9-]{1,60}" />
+        </div>
+        <div>
+          <label>Address</label>
+          <input required id="f-address" placeholder="12 Allen Avenue, Ikeja, Lagos" />
+        </div>
+        <div>
+          <label>Phone number</label>
+          <input required id="f-phone" placeholder="+2348012345678" />
+        </div>
+        <div>
+          <label>Admin name</label>
+          <input required id="f-admin-name" placeholder="Jane Admin" />
+        </div>
+        <div>
+          <label>Admin email (also the login username)</label>
+          <input required type="email" id="f-admin-email" placeholder="jane@example-high.example.com" />
+        </div>
+        <div>
+          <label>Admin temporary password (min 8 chars)</label>
+          <input required minlength="8" id="f-admin-password" placeholder="changeme123" />
+        </div>
+        <div>
+          <label>Timezone (IANA, drives welfare-job cutoffs)</label>
+          <input required id="f-timezone" value="UTC" list="tz-suggestions" placeholder="Africa/Lagos" />
+          <datalist id="tz-suggestions">
+            <option value="UTC"></option>
+            <option value="Africa/Lagos"></option>
+            <option value="America/New_York"></option>
+            <option value="America/Chicago"></option>
+            <option value="America/Los_Angeles"></option>
+            <option value="Europe/London"></option>
+            <option value="Asia/Kolkata"></option>
+          </datalist>
+        </div>
+        <div>
+          <label>Billing email (Paystack contact — defaults to admin email)</label>
+          <input type="email" id="f-billing-email" placeholder="billing@example-high.example.com" />
+        </div>
+        <div class="full">
+          <button type="submit">Enroll school</button>
+        </div>
+      </form>
     </div>
-    <div style="margin-top: 12px;">
-      <button class="secondary" onclick="loadSchools()">Refresh</button>
+
+    <div class="panel">
+      <h2>Schools <span class="hint">GET /platform/schools</span></h2>
+      <div class="filter-row">
+        <input type="text" id="school-search" placeholder="Search by GPD-000001 or name" style="flex:1; padding:8px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px;" />
+        <button class="secondary" onclick="loadSchools()">Search</button>
+        <button class="secondary" onclick="document.getElementById('school-search').value=''; loadSchools();">Reset</button>
+      </div>
+      <div id="school-detail-container"></div>
+      <div id="schools-container">
+        <p class="empty">Log in above, then this loads automatically.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-billing">
+    <div class="panel">
+      <h2>Invoices <span class="hint">GET /platform/invoices</span></h2>
+      <div class="filter-row">
+        <label style="margin:0;">Status:</label>
+        <select id="billing-status" onchange="loadInvoices('billing')">
+          <option value="upcoming" selected>Upcoming due</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="overdue">Overdue</option>
+          <option value="all">All</option>
+        </select>
+        <button class="secondary" onclick="loadInvoices('billing')">Refresh</button>
+      </div>
+      <div id="billing-invoices-container">
+        <p class="empty">Log in above, then this loads automatically.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tab-manage">
+    <div class="panel">
+      <h2>Unpaid &amp; overdue subscriptions <span class="hint">GET /platform/invoices?status=unpaid</span></h2>
+      <div id="manage-invoices-container">
+        <p class="empty">Log in above, then this loads automatically.</p>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Deactivate / reactivate schools</h2>
+      <div id="manage-schools-container">
+        <p class="empty">Log in above, then this loads automatically.</p>
+      </div>
     </div>
   </div>
 
@@ -193,8 +303,6 @@
 </main>
 
 <script>
-  const STATUSES = ["trialing", "active", "past_due", "canceled"];
-
   function getToken() {
     return localStorage.getItem("platform_staff_token") || "";
   }
@@ -205,49 +313,6 @@
 
   function clearToken() {
     localStorage.removeItem("platform_staff_token");
-  }
-
-  function renderAuthArea() {
-    const area = document.getElementById("auth-area");
-    if (getToken()) {
-      area.innerHTML = `
-        <span><span class="status-dot set"></span>Logged in</span>
-        <button class="secondary" onclick="logout()">Log out</button>`;
-      return;
-    }
-    area.innerHTML = `
-      <span class="status-dot unset"></span>
-      <input type="email" id="login-email" placeholder="you@example.com" autocomplete="username" />
-      <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
-      <button class="secondary" onclick="login()">Log in</button>`;
-  }
-
-  async function login() {
-    const email = document.getElementById("login-email").value.trim();
-    const password = document.getElementById("login-password").value;
-    if (!email || !password) return;
-    try {
-      const response = await fetch("/auth/platform/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.detail ? JSON.stringify(body.detail) : response.status);
-      setToken(body.access_token);
-      renderAuthArea();
-      log(`Logged in as ${email}.`, true);
-      loadSchools();
-    } catch (e) {
-      log(`Login failed: ${e.message}`, false);
-    }
-  }
-
-  function logout() {
-    clearToken();
-    renderAuthArea();
-    document.getElementById("schools-container").innerHTML = '<p class="empty">Log in above, then click Refresh.</p>';
-    log("Logged out.", true);
   }
 
   function log(message, ok) {
@@ -279,11 +344,92 @@
     return body;
   }
 
+  function renderAuthArea() {
+    const area = document.getElementById("auth-area");
+    const loggedIn = !!getToken();
+    document.getElementById("login-home").style.display = loggedIn ? "none" : "flex";
+    document.getElementById("dashboard").style.display = loggedIn ? "block" : "none";
+    if (loggedIn) {
+      area.innerHTML = `
+        <a onclick="promptChangePassword()">Change password</a>
+        <button class="secondary" onclick="logout()">Log out</button>`;
+    } else {
+      area.innerHTML = "";
+    }
+  }
+
+  async function login() {
+    const email = document.getElementById("login-email").value.trim();
+    const password = document.getElementById("login-password").value;
+    const errorEl = document.getElementById("login-error");
+    errorEl.style.display = "none";
+    if (!email || !password) return;
+    try {
+      const body = await apiFetch("/auth/platform/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      setToken(body.access_token);
+      renderAuthArea();
+      log(`Logged in as ${email}.`, true);
+      loadEverything();
+    } catch (e) {
+      errorEl.textContent = `Login failed: ${e.message}`;
+      errorEl.style.display = "block";
+    }
+  }
+
+  function logout() {
+    clearToken();
+    renderAuthArea();
+    log("Logged out.", true);
+  }
+
+  async function promptChangePassword() {
+    if (!getToken()) {
+      alert("Log in first, then use Change password from the header.");
+      return;
+    }
+    const current = prompt("Current password:");
+    if (!current) return;
+    const next = prompt("New password (min 8 characters):");
+    if (!next) return;
+    try {
+      await apiFetch("/auth/platform/change-password", {
+        method: "POST",
+        body: JSON.stringify({ current_password: current, new_password: next }),
+      });
+      log("Password changed.", true);
+    } catch (e) {
+      log(`Password change failed: ${e.message}`, false);
+    }
+  }
+
+  function switchTab(name) {
+    document.querySelectorAll(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === name));
+    document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.remove("active"));
+    document.getElementById(`tab-${name}`).classList.add("active");
+    if (name === "billing") loadInvoices("billing");
+    if (name === "manage") { loadInvoices("manage"); loadSchools(); }
+  }
+
+  function badgeHtml(status) {
+    const known = ["active", "suspended", "paid", "pending", "overdue"];
+    const cls = known.includes(status) ? status : "none";
+    return `<span class="badge ${cls}">${status}</span>`;
+  }
+
+  function gpdId(sequenceNo) {
+    return `GPD-${String(sequenceNo).padStart(6, "0")}`;
+  }
+
   async function enrollSchool(event) {
     event.preventDefault();
     const payload = {
       name: document.getElementById("f-name").value,
       slug: document.getElementById("f-slug").value,
+      address: document.getElementById("f-address").value,
+      phone: document.getElementById("f-phone").value,
       admin_name: document.getElementById("f-admin-name").value,
       admin_email: document.getElementById("f-admin-email").value,
       admin_temp_password: document.getElementById("f-admin-password").value,
@@ -292,8 +438,9 @@
     };
     try {
       const school = await apiFetch("/platform/schools", { method: "POST", body: JSON.stringify(payload) });
-      log(`Enrolled "${school.name}" (${school.slug}) — tenant database provisioned.`, true);
+      log(`Enrolled "${school.name}" (${gpdId(school.sequence_no)}) — tenant database provisioned, welcome email sent.`, true);
       event.target.reset();
+      document.getElementById("f-timezone").value = "UTC";
       loadSchools();
     } catch (e) {
       log(`Enroll failed: ${e.message}`, false);
@@ -301,74 +448,146 @@
     return false;
   }
 
-  function badgeHtml(status) {
-    const cls = STATUSES.includes(status) ? status : "none";
-    return `<span class="badge ${cls}">${status}</span>`;
-  }
-
   async function loadSchools() {
     const container = document.getElementById("schools-container");
+    const query = document.getElementById("school-search").value.trim();
     try {
-      const schools = await apiFetch("/platform/schools");
+      const path = query ? `/platform/schools?query=${encodeURIComponent(query)}` : "/platform/schools";
+      const schools = await apiFetch(path);
+      window.__schools = schools;
       if (schools.length === 0) {
-        container.innerHTML = '<p class="empty">No schools enrolled yet.</p>';
-        return;
-      }
-      const rows = schools.map((s) => {
-        const options = STATUSES.map(
-          (st) => `<option value="${st}" ${st === s.subscription_status ? "selected" : ""}>${st}</option>`
-        ).join("");
-        return `
+        container.innerHTML = '<p class="empty">No schools found.</p>';
+      } else {
+        const rows = schools.map((s) => `
           <tr>
+            <td><a onclick="showSchoolDetail('${s.id}')" style="cursor:pointer; color:var(--accent);">${gpdId(s.sequence_no)}</a></td>
             <td><strong>${s.name}</strong><br/><span style="color:var(--text-muted)">${s.slug}</span></td>
             <td>${s.timezone}</td>
-            <td>${badgeHtml(s.subscription_status)}<br/><span style="color:var(--text-muted); font-size:11px;">${s.subscription_plan}</span></td>
+            <td>${badgeHtml(s.subscription_status)}</td>
             <td>${new Date(s.created_at).toLocaleDateString()}</td>
-            <td>
-              <div class="row-actions">
-                <select id="status-${s.id}">${options}</select>
-                <button class="secondary" onclick="applyStatus('${s.id}', '${s.name}')">Apply</button>
-                <button class="secondary" onclick="createCheckout('${s.id}', '${s.name}')">Checkout link</button>
-              </div>
-            </td>
-          </tr>`;
-      }).join("");
-      container.innerHTML = `
-        <table>
-          <thead><tr><th>School</th><th>Timezone</th><th>Subscription</th><th>Enrolled</th><th>Actions</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
+          </tr>`).join("");
+        container.innerHTML = `
+          <table>
+            <thead><tr><th>ID</th><th>School</th><th>Timezone</th><th>Subscription</th><th>Enrolled</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`;
+      }
+      renderManageSchools(schools);
     } catch (e) {
       container.innerHTML = `<p class="empty">Failed to load schools: ${e.message}</p>`;
     }
   }
 
-  async function applyStatus(schoolId, name) {
-    const select = document.getElementById(`status-${schoolId}`);
-    const status = select.value;
+  async function showSchoolDetail(schoolId) {
+    const container = document.getElementById("school-detail-container");
     try {
-      await apiFetch(`/platform/schools/${schoolId}/subscription`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      });
-      log(`${name}: subscription set to "${status}".`, true);
-      loadSchools();
+      const d = await apiFetch(`/platform/schools/${schoolId}`);
+      container.innerHTML = `
+        <div class="detail-panel">
+          <strong>${d.name}</strong> (${gpdId(d.sequence_no)}) ${badgeHtml(d.subscription_status)}
+          <button class="secondary" style="float:right; padding:2px 10px;" onclick="document.getElementById('school-detail-container').innerHTML='';">Close</button>
+          <dl>
+            <dt>Address</dt><dd>${d.address || "—"}</dd>
+            <dt>Phone</dt><dd>${d.phone || "—"}</dd>
+            <dt>Children enrolled</dt><dd>${d.child_count}</dd>
+            <dt>Subscription started</dt><dd>${new Date(d.started_at).toLocaleDateString()}</dd>
+            <dt>Current period</dt><dd>${d.current_period_start} — ${d.current_period_end}</dd>
+          </dl>
+        </div>`;
     } catch (e) {
-      log(`${name}: failed to update subscription — ${e.message}`, false);
+      log(`Failed to load school detail: ${e.message}`, false);
     }
   }
 
-  async function createCheckout(schoolId, name) {
+  function invoiceRowHtml(inv, includeAction) {
+    const action = includeAction
+      ? `<button class="secondary" onclick="sendCheckoutLink('${inv.id}')">Send checkout link</button>`
+      : "";
+    return `
+      <tr>
+        <td>${inv.school_name}</td>
+        <td>${inv.period_start} — ${inv.period_end}</td>
+        <td>${inv.child_count}</td>
+        <td>${inv.amount_naira} NGN</td>
+        <td>${badgeHtml(inv.status)}</td>
+        <td>${inv.due_date}</td>
+        <td>${action}</td>
+      </tr>`;
+  }
+
+  async function loadInvoices(which) {
+    const status = which === "billing" ? document.getElementById("billing-status").value : "unpaid";
+    const containerId = which === "billing" ? "billing-invoices-container" : "manage-invoices-container";
+    const container = document.getElementById(containerId);
     try {
-      const result = await apiFetch(`/platform/schools/${schoolId}/billing/checkout-session`, { method: "POST" });
-      log(`${name}: checkout URL — ${result.checkout_url}`, true);
+      const invoices = await apiFetch(`/platform/invoices?status=${encodeURIComponent(status)}`);
+      if (invoices.length === 0) {
+        container.innerHTML = '<p class="empty">No invoices in this bucket.</p>';
+        return;
+      }
+      const rows = invoices.map((inv) => invoiceRowHtml(inv, which === "billing")).join("");
+      container.innerHTML = `
+        <table>
+          <thead><tr><th>School</th><th>Period</th><th>Children</th><th>Amount</th><th>Status</th><th>Due</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
     } catch (e) {
-      log(`${name}: checkout session failed — ${e.message}`, false);
+      container.innerHTML = `<p class="empty">Failed to load invoices: ${e.message}</p>`;
     }
+  }
+
+  async function sendCheckoutLink(invoiceId) {
+    try {
+      const result = await apiFetch(`/platform/invoices/${invoiceId}/checkout-session`, { method: "POST" });
+      log(`Checkout link — ${result.checkout_url}`, true);
+    } catch (e) {
+      log(`Checkout session failed: ${e.message}`, false);
+    }
+  }
+
+  function renderManageSchools(schools) {
+    const container = document.getElementById("manage-schools-container");
+    if (!schools || schools.length === 0) {
+      container.innerHTML = '<p class="empty">No schools enrolled yet.</p>';
+      return;
+    }
+    const rows = schools.map((s) => {
+      const isActive = s.subscription_status === "active";
+      const actionBtn = isActive
+        ? `<button class="danger" onclick="setSchoolStatus('${s.id}', 'deactivate')">Deactivate</button>`
+        : `<button class="secondary" onclick="setSchoolStatus('${s.id}', 'reactivate')">Reactivate</button>`;
+      return `
+        <tr>
+          <td>${gpdId(s.sequence_no)}</td>
+          <td>${s.name}</td>
+          <td>${badgeHtml(s.subscription_status)}</td>
+          <td>${actionBtn}</td>
+        </tr>`;
+    }).join("");
+    container.innerHTML = `
+      <table>
+        <thead><tr><th>ID</th><th>School</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  async function setSchoolStatus(schoolId, action) {
+    try {
+      const result = await apiFetch(`/platform/schools/${schoolId}/${action}`, { method: "POST" });
+      log(`School ${action}d — subscription is now "${result.subscription_status}".`, true);
+      loadSchools();
+    } catch (e) {
+      log(`${action} failed: ${e.message}`, false);
+    }
+  }
+
+  function loadEverything() {
+    loadSchools();
+    loadInvoices("billing");
   }
 
   renderAuthArea();
-  if (getToken()) loadSchools();
+  if (getToken()) loadEverything();
 </script>
 
 </body>

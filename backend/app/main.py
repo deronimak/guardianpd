@@ -16,6 +16,7 @@ from app.api.routes import (
     parent_auth,
     platform_auth,
     schools,
+    staff_accounts,
     students,
     welfare,
 )
@@ -26,7 +27,7 @@ from app.api.routes import (
 # sets this itself; the API needs it done here at import time instead.
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="School Attendance QR API")
+app = FastAPI(title="GuardianPD API")
 
 # Dev-permissive CORS so the Flutter web build (served from a different
 # port) can call this API from a browser. Restrict allow_origins before
@@ -48,6 +49,7 @@ app.include_router(parent_auth.router)
 app.include_router(parent.router)
 app.include_router(guardians.router)
 app.include_router(students.router)
+app.include_router(staff_accounts.router)
 app.include_router(absences.router)
 app.include_router(attendance.router)
 app.include_router(welfare.router)

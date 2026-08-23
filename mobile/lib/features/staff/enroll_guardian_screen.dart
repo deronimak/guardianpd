@@ -21,6 +21,9 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
 
+  int? _childCount;
+  List<TextEditingController> _childControllers = [];
+
   bool _submitting = false;
   bool _sharing = false;
   String? _error;
@@ -28,6 +31,17 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
   // Set once enrollment succeeds; drives the success panel below the form.
   String? _enrolledGuardianId;
   String? _enrolledGuardianName;
+  List<String> _enrolledChildrenNames = [];
+
+  void _onChildCountChanged(int? count) {
+    setState(() {
+      _childCount = count;
+      for (final controller in _childControllers) {
+        controller.dispose();
+      }
+      _childControllers = List.generate(count ?? 0, (_) => TextEditingController());
+    });
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -36,14 +50,18 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
       _error = null;
     });
     try {
+      final childrenNames = _childControllers.map((c) => c.text.trim()).toList();
       final guardian = await widget.apiClient.createGuardian(
         name: _nameController.text.trim(),
         email: _emailController.text.trim(),
         phone: _phoneController.text.trim(),
+        childrenNames: childrenNames,
       );
+      final children = (guardian['children'] as List).cast<Map<String, dynamic>>();
       setState(() {
         _enrolledGuardianId = guardian['id'] as String;
         _enrolledGuardianName = guardian['name'] as String;
+        _enrolledChildrenNames = children.map((c) => c['name'] as String).toList();
       });
     } catch (e) {
       setState(() => _error = 'Enroll failed: $e');
@@ -75,9 +93,11 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
     _nameController.clear();
     _emailController.clear();
     _phoneController.clear();
+    _onChildCountChanged(null);
     setState(() {
       _enrolledGuardianId = null;
       _enrolledGuardianName = null;
+      _enrolledChildrenNames = [];
       _error = null;
     });
   }
@@ -87,6 +107,9 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    for (final controller in _childControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -94,7 +117,7 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
   Widget build(BuildContext context) {
     final enrolled = _enrolledGuardianId != null;
     return Scaffold(
-      appBar: AppBar(title: const Text('Enroll Guardian')),
+      appBar: AppBar(title: const Text('Add Guardian')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: enrolled ? _buildSuccessPanel() : _buildForm(),
@@ -124,10 +147,30 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _phoneController,
-            decoration: const InputDecoration(labelText: 'Phone (optional)'),
+            decoration: const InputDecoration(labelText: 'Phone number'),
             keyboardType: TextInputType.phone,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int>(
+            value: _childCount,
+            decoration: const InputDecoration(labelText: 'Number of children'),
+            items: List.generate(10, (i) => i + 1)
+                .map((n) => DropdownMenuItem(value: n, child: Text('$n')))
+                .toList(),
+            onChanged: _onChildCountChanged,
+            validator: (value) => value == null ? 'Select how many children' : null,
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < _childControllers.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TextFormField(
+                controller: _childControllers[i],
+                decoration: InputDecoration(labelText: "Child ${i + 1}'s full name"),
+                validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null,
+              ),
+            ),
+          const SizedBox(height: 12),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -137,7 +180,7 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
             onPressed: _submitting ? null : _submit,
             child: _submitting
                 ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator())
-                : const Text('Enroll guardian'),
+                : const Text('Add guardian'),
           ),
         ],
       ),
@@ -156,10 +199,13 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
-        const Text(
-          "An activation email was sent (or logged, in dev). Their printed QR credential is ready below.",
+        Text(
+          _enrolledChildrenNames.isEmpty
+              ? "An activation email was sent (or logged, in dev). Their printed QR credential is ready below."
+              : "Linked to: ${_enrolledChildrenNames.join(', ')}. An activation email was sent "
+                  "(or logged, in dev). Their printed QR credential is ready below.",
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.black54),
+          style: const TextStyle(color: Colors.black54),
         ),
         const SizedBox(height: 24),
         if (_error != null)
@@ -177,7 +223,7 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
         const SizedBox(height: 12),
         OutlinedButton.icon(
           icon: const Icon(Icons.link),
-          label: const Text('Link to a student'),
+          label: const Text('Link to another student'),
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => LinkGuardianScreen(

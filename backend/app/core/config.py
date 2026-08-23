@@ -33,13 +33,14 @@ class Settings(BaseSettings):
     firebase_credentials_json: str = ""
 
     # Paystack billing (ARCHITECTURE.md §4). Requires your own Paystack
-    # account/API keys — checkout-session creation returns a clear 501
-    # until paystack_secret_key/paystack_plan_code are set (there's no
-    # meaningful "fake" checkout URL to fall back to the way there is for
-    # email/push). Paystack verifies webhooks with the same secret key
-    # (HMAC-SHA512), not a separate webhook secret like Stripe.
+    # account/API key — checkout-session creation returns a clear 501 until
+    # paystack_secret_key is set (there's no meaningful "fake" checkout URL
+    # to fall back to the way there is for email/push). Each checkout is a
+    # one-off transaction for a specific Invoice's amount, not a Plan
+    # subscription, so there's no plan-code setting. Paystack verifies
+    # webhooks with the same secret key (HMAC-SHA512), not a separate
+    # webhook secret like Stripe.
     paystack_secret_key: str = ""
-    paystack_plan_code: str = ""
     paystack_callback_url: str = "https://example.com/billing/callback"
 
 

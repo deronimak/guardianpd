@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../parent/parent_login_screen.dart';
+import '../staff/admin_login_screen.dart';
 import '../staff/staff_login_screen.dart';
 
 class RoleSelectScreen extends StatelessWidget {
@@ -9,18 +10,18 @@ class RoleSelectScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('School Attendance QR')),
+      appBar: AppBar(title: const Text('GuardianPD')),
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ElevatedButton(
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ParentLoginScreen()),
+                MaterialPageRoute(builder: (_) => const AdminLoginScreen()),
               ),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: Text('I am a Parent'),
+                child: Text('School Admin'),
               ),
             ),
             const SizedBox(height: 16),
@@ -30,7 +31,17 @@ class RoleSelectScreen extends StatelessWidget {
               ),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                child: Text('I am School Staff'),
+                child: Text('School Staff'),
+              ),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ParentLoginScreen()),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                child: Text('Guardian'),
               ),
             ),
           ],

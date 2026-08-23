@@ -46,9 +46,12 @@ def require_active_subscription(
     school: School = Depends(get_school),
     platform_db: Session = Depends(get_platform_db),
 ) -> School:
-    """ARCHITECTURE.md §4: lapsed subscription blocks QR issuance AND scanning."""
+    """ARCHITECTURE.md §4: a suspended subscription blocks QR issuance AND
+    scanning. Suspension is a manual Master Admin action (Manage
+    Subscription page) — see app/api/routes/billing.py.
+    """
     subscription = platform_db.query(Subscription).filter_by(school_id=school.id).first()
-    if subscription is None or subscription.status not in ("trialing", "active"):
+    if subscription is None or subscription.status != "active":
         raise HTTPException(
             status_code=402,
             detail="This school's subscription is inactive. QR scanning and issuance are disabled until it's resolved.",
@@ -68,6 +71,17 @@ def get_current_staff(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     if claims.get("school_id") != str(school.id):
         raise HTTPException(status_code=403, detail="Token is not valid for this school")
+    return claims
+
+
+def require_school_admin(claims: dict = Depends(get_current_staff)) -> dict:
+    """Gates the School-Admin-only mobile surface (staff-account creation,
+    guardian enrollment/search/resend-activation) — the GuardianPD rework
+    splits StaffUser.role into "admin" vs "staff"; School Staff accounts
+    (role="staff") get 403'd here rather than silently sharing admin powers.
+    """
+    if claims.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="School admin access required")
     return claims
 
 

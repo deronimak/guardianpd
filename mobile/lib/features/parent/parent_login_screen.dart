@@ -46,7 +46,7 @@ class _ParentLoginScreenState extends State<ParentLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Parent Login')),
+      appBar: AppBar(title: const Text('Guardian Login')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
