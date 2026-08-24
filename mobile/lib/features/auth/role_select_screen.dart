@@ -4,8 +4,8 @@ import '../parent/parent_login_screen.dart';
 import '../staff/admin_login_screen.dart';
 import '../staff/staff_login_screen.dart';
 
-// Solid-fill purple pill, shared by all three role buttons so they read as
-// one consistent button style rather than a primary/outlined mix.
+// Fixed-width wrapper only — the purple pill look itself comes from the
+// app-wide ElevatedButtonTheme in main.dart, same as every other button.
 class _RoleButton extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
@@ -15,17 +15,7 @@ class _RoleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: 220,
-      height: 48,
-      child: ElevatedButton(
-        onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF6A4FE0),
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-        child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-      ),
+      child: ElevatedButton(onPressed: onPressed, child: Text(label)),
     );
   }
 }
