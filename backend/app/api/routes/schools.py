@@ -9,7 +9,7 @@ bootstrap an account.
 import datetime as dt
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_platform_staff
@@ -19,21 +19,52 @@ from app.db.platform import SessionLocal, get_platform_db
 from app.db.tenant import get_tenant_engine, get_tenant_sessionmaker, provision_tenant_database
 from app.db.twophase import get_twophase_session
 from app.models.platform import Invoice, School, Subscription
-from app.models.tenant import StaffUser, Student, TenantBase
-from app.schemas.school import SchoolDetailOut, SchoolEnrollRequest, SchoolOut, SchoolWithSubscriptionOut
+from app.models.tenant import (
+    AttendanceEvent,
+    ExpectedAbsence,
+    GuardianStudentLink,
+    Notification,
+    StaffUser,
+    Student,
+    TenantBase,
+    WelfareAlertLog,
+)
+from app.schemas.school import (
+    SchoolDetailOut,
+    SchoolEnrollRequest,
+    SchoolOut,
+    SchoolUpdateRequest,
+    SchoolWithSubscriptionOut,
+)
+from app.schemas.student import StudentOut, StudentUpdateRequest
 
 router = APIRouter(prefix="/platform/schools", tags=["platform"], dependencies=[Depends(require_platform_staff)])
 
 _BILLING_PERIOD_DAYS = 30
 
 
+def _get_school_or_404(school_id: uuid.UUID, platform_db: Session) -> School:
+    school = platform_db.get(School, school_id)
+    if school is None:
+        raise HTTPException(status_code=404, detail="Unknown school")
+    return school
+
+
 @router.get("", response_model=list[SchoolWithSubscriptionOut])
-def list_schools(query: str | None = None, platform_db: Session = Depends(get_platform_db)) -> list[dict]:
+def list_schools(
+    query: str | None = None,
+    include_archived: bool = False,
+    platform_db: Session = Depends(get_platform_db),
+) -> list[dict]:
     """Powers the Master Admin dashboard — search by either the auto-generated
     "GPD-XXXXXX" school ID (matched against the numeric sequence_no) or a
-    substring of the school name.
+    substring of the school name. Archived schools are hidden unless
+    `include_archived=true` (used by the console's "show archived" toggle,
+    since an archived school can still be found and unarchived here).
     """
     q = platform_db.query(School)
+    if not include_archived:
+        q = q.filter(School.archived_at.is_(None))
     if query:
         stripped = query.strip().upper().removeprefix("GPD-").lstrip("0")
         if stripped.isdigit():
@@ -56,6 +87,7 @@ def list_schools(query: str | None = None, platform_db: Session = Depends(get_pl
                 "billing_email": school.billing_email,
                 "created_at": school.created_at,
                 "subscription_status": subscription.status if subscription else "none",
+                "archived_at": school.archived_at,
             }
         )
     return result
@@ -66,9 +98,7 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
     """Backs the dashboard's "link to each school": child count + the
     current billing-period window (ARCHITECTURE.md §4).
     """
-    school = platform_db.get(School, school_id)
-    if school is None:
-        raise HTTPException(status_code=404, detail="Unknown school")
+    school = _get_school_or_404(school_id, platform_db)
 
     subscription = platform_db.query(Subscription).filter_by(school_id=school.id).first()
     latest_invoice = (
@@ -105,7 +135,136 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
         "current_period_start": current_period_start,
         "current_period_end": current_period_end,
         "child_count": child_count,
+        "archived_at": school.archived_at,
     }
+
+
+@router.patch("/{school_id}", response_model=SchoolOut)
+def update_school(
+    school_id: uuid.UUID,
+    payload: SchoolUpdateRequest,
+    platform_db: Session = Depends(get_platform_db),
+) -> School:
+    """Edit a school's own record. `slug` isn't in SchoolUpdateRequest at
+    all — it's baked into the tenant database name at enrollment and isn't
+    safe to change after the fact.
+    """
+    school = _get_school_or_404(school_id, platform_db)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(school, field, value)
+    platform_db.commit()
+    platform_db.refresh(school)
+    return school
+
+
+@router.post("/{school_id}/archive", response_model=SchoolOut)
+def archive_school_record(school_id: uuid.UUID, platform_db: Session = Depends(get_platform_db)) -> School:
+    """Removes the school from the default dashboard list and blocks staff
+    login/scanning (app/api/deps.py's get_school) — deliberately NOT a hard
+    delete. The tenant database and every guardian/child/attendance record
+    in it are untouched and fully recoverable via .../unarchive.
+    """
+    school = _get_school_or_404(school_id, platform_db)
+    if school.archived_at is None:
+        school.archived_at = dt.datetime.now(dt.timezone.utc)
+        platform_db.commit()
+        platform_db.refresh(school)
+    return school
+
+
+@router.post("/{school_id}/unarchive", response_model=SchoolOut)
+def unarchive_school_record(school_id: uuid.UUID, platform_db: Session = Depends(get_platform_db)) -> School:
+    school = _get_school_or_404(school_id, platform_db)
+    school.archived_at = None
+    platform_db.commit()
+    platform_db.refresh(school)
+    return school
+
+
+def _tenant_session_for(school: School):
+    return get_tenant_sessionmaker(school.tenant_db_name)()
+
+
+@router.get("/{school_id}/students", response_model=list[StudentOut])
+def search_school_students(
+    school_id: uuid.UUID,
+    query: str | None = None,
+    platform_db: Session = Depends(get_platform_db),
+) -> list[Student]:
+    """Master Admin child search (independent of the school-admin-scoped
+    /students routes in app/api/routes/students.py, which require a staff
+    JWT for that specific school) — this one is reachable directly from the
+    platform-staff-authenticated console for any school by id.
+    """
+    school = _get_school_or_404(school_id, platform_db)
+    tenant_db = _tenant_session_for(school)
+    try:
+        q = tenant_db.query(Student)
+        if query:
+            q = q.filter(Student.name.ilike(f"%{query}%"))
+        return q.order_by(Student.name).all()
+    finally:
+        tenant_db.close()
+
+
+@router.patch("/{school_id}/students/{student_id}", response_model=StudentOut)
+def update_school_student(
+    school_id: uuid.UUID,
+    student_id: uuid.UUID,
+    payload: StudentUpdateRequest,
+    platform_db: Session = Depends(get_platform_db),
+) -> Student:
+    school = _get_school_or_404(school_id, platform_db)
+    tenant_db = _tenant_session_for(school)
+    try:
+        student = tenant_db.get(Student, student_id)
+        if student is None:
+            raise HTTPException(status_code=404, detail="Unknown student at this school")
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            setattr(student, field, value)
+        tenant_db.commit()
+        tenant_db.refresh(student)
+        return student
+    finally:
+        tenant_db.close()
+
+
+@router.delete("/{school_id}/students/{student_id}", status_code=204)
+def delete_school_student(
+    school_id: uuid.UUID,
+    student_id: uuid.UUID,
+    platform_db: Session = Depends(get_platform_db),
+) -> Response:
+    """Hard delete — a single child is low enough blast radius to just
+    remove outright (unlike archiving a whole school). None of the FKs
+    pointing at students.id are ON DELETE CASCADE, so dependent rows are
+    cleaned up explicitly, in dependency order, inside one transaction:
+    Notification (via AttendanceEvent) -> AttendanceEvent -> ExpectedAbsence
+    -> WelfareAlertLog -> GuardianStudentLink -> Student.
+    """
+    school = _get_school_or_404(school_id, platform_db)
+    tenant_db = _tenant_session_for(school)
+    try:
+        student = tenant_db.get(Student, student_id)
+        if student is None:
+            raise HTTPException(status_code=404, detail="Unknown student at this school")
+
+        event_ids = [
+            row.id for row in tenant_db.query(AttendanceEvent.id).filter_by(student_id=student_id).all()
+        ]
+        if event_ids:
+            tenant_db.query(Notification).filter(Notification.event_id.in_(event_ids)).delete(
+                synchronize_session=False
+            )
+        tenant_db.query(AttendanceEvent).filter_by(student_id=student_id).delete(synchronize_session=False)
+        tenant_db.query(ExpectedAbsence).filter_by(student_id=student_id).delete(synchronize_session=False)
+        tenant_db.query(WelfareAlertLog).filter_by(student_id=student_id).delete(synchronize_session=False)
+        tenant_db.query(GuardianStudentLink).filter_by(student_id=student_id).delete(synchronize_session=False)
+        tenant_db.delete(student)
+        tenant_db.commit()
+    finally:
+        tenant_db.close()
+    return Response(status_code=204)
 
 
 @router.post("", response_model=SchoolOut, status_code=201)

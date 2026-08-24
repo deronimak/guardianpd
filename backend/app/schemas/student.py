@@ -15,6 +15,17 @@ class StudentOut(BaseModel):
 
     id: uuid.UUID
     name: str
+    dob: date | None = None
+    grade: str | None = None
+
+
+class StudentUpdateRequest(BaseModel):
+    """Partial update for the Master Admin's child-search edit action — only
+    fields actually present in the request body are changed (see
+    model_dump(exclude_unset=True) in the route)."""
+
+    name: str | None = None
+    dob: date | None = None
     grade: str | None = None
 
 

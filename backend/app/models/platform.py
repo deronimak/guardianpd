@@ -28,6 +28,13 @@ class School(PlatformBase):
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
+    # Archiving (not a hard delete — see app/api/routes/schools.py) removes
+    # the school from the default dashboard list and blocks staff
+    # login/scanning (app/api/deps.py's get_school), but the tenant database
+    # and every record in it stay physically intact and recoverable via
+    # POST /platform/schools/{id}/unarchive.
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     # Welfare-email job config (ARCHITECTURE.md §7). Cutoff times are local
     # wall-clock times in this school's own timezone (IANA identifier, e.g.
     # "America/New_York") — app/jobs/welfare_check.py converts UTC "now"

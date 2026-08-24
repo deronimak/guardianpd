@@ -29,7 +29,11 @@ def get_school(
     platform_db: Session = Depends(get_platform_db),
 ) -> School:
     school = platform_db.query(School).filter_by(slug=x_school_slug).first()
-    if school is None:
+    # An archived school (Master Admin console) is treated as if it doesn't
+    # exist at all here — this is the single choke point that blocks staff
+    # login, guardian enrollment, and QR scanning for it, without touching
+    # its tenant database or any record in it.
+    if school is None or school.archived_at is not None:
         raise HTTPException(status_code=404, detail="Unknown school")
     return school
 

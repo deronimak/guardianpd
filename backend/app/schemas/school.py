@@ -38,6 +38,7 @@ class SchoolOut(BaseModel):
     status: str
     timezone: str
     billing_email: str | None
+    archived_at: datetime | None = None
 
 
 class SchoolWithSubscriptionOut(BaseModel):
@@ -50,6 +51,7 @@ class SchoolWithSubscriptionOut(BaseModel):
     billing_email: str | None
     created_at: datetime
     subscription_status: str
+    archived_at: datetime | None = None
 
 
 class SchoolDetailOut(BaseModel):
@@ -73,3 +75,29 @@ class SchoolDetailOut(BaseModel):
     current_period_start: date
     current_period_end: date
     child_count: int
+    archived_at: datetime | None = None
+
+
+class SchoolUpdateRequest(BaseModel):
+    """Partial update — only fields actually present in the request body are
+    changed (see model_dump(exclude_unset=True) in the route). `slug` is
+    deliberately not editable here: it's the tenant-DB routing key baked
+    into the school's own database name at enrollment time.
+    """
+
+    name: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    billing_email: EmailStr | None = None
+    timezone: str | None = None
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            zoneinfo.ZoneInfo(value)
+        except zoneinfo.ZoneInfoNotFoundError:
+            raise ValueError(f"Unknown IANA timezone: {value!r}")
+        return value
