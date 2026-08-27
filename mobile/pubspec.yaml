@@ -60,6 +60,18 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
 
+  # Generates the real launcher icon (assets/icon/) into every Android
+  # mipmap size + the adaptive-icon layers — run via
+  # `dart run flutter_launcher_icons`, not needed at app runtime.
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#6A4FE0"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
