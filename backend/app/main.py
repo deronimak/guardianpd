@@ -63,3 +63,10 @@ app.mount("/admin", StaticFiles(directory=_STATIC_ADMIN_DIR, html=True), name="a
 # Public privacy policy page, required for the Play Console listing.
 _STATIC_LEGAL_DIR = os.path.join(os.path.dirname(__file__), "static", "legal")
 app.mount("/privacy", StaticFiles(directory=_STATIC_LEGAL_DIR, html=True), name="legal")
+
+# Where Paystack redirects a school's browser after a checkout attempt
+# (see PAYSTACK_CALLBACK_URL / app/api/routes/billing.py). The actual
+# invoice status update happens via the /platform/billing/webhook
+# server-to-server call, not this page — it's just a human-readable landing.
+_STATIC_BILLING_DIR = os.path.join(os.path.dirname(__file__), "static", "billing_thank_you")
+app.mount("/billing/thank-you", StaticFiles(directory=_STATIC_BILLING_DIR, html=True), name="billing_thank_you")
