@@ -81,6 +81,19 @@ curl -X POST http://127.0.0.1:8000/platform/schools \
 
 This provisions the school's own Postgres database automatically and seeds its first staff admin account — the `School`/`Subscription`/`StaffUser` rows across both databases are written atomically (see "Cross-database atomicity" below).
 
+## Deploying to production
+
+The backend is a plain Dockerized FastAPI app (`backend/Dockerfile`, verified locally: `docker build -t guardianpd-backend . && docker run` against the dev Postgres, including a real DB-backed login through the container) — it should deploy to any host that can run a Docker image and give it a Postgres connection. These steps assume **Railway**, since each school needs its own dynamically-created database (`CREATE DATABASE`), which Railway's Postgres plugin supports (it's a real Postgres instance, not a restricted single-database proxy) — Render's managed Postgres offering may not grant that privilege, so verify before switching hosts.
+
+1. Create a Railway account/project, add a **Postgres** service to it (this becomes your platform database server — every school's tenant database gets created on this same instance).
+2. Add a second service for the backend, pointed at this repo's `backend/` directory (Railway auto-detects the `Dockerfile`).
+3. Copy the values from `backend/.env.production` (generated locally, gitignored — includes fresh `JWT_SECRET_KEY`/`QR_SIGNING_KEY`, distinct from the local-dev defaults) into the backend service's environment variables in the Railway dashboard, filling in `PLATFORM_DATABASE_URL`/`POSTGRES_ADMIN_URL`/`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_USER`/`POSTGRES_PASSWORD` from the Postgres service's connection details (Railway shows these on that service's "Variables" tab). Leave `SMTP_HOST`/`FIREBASE_CREDENTIALS_JSON`/`PAYSTACK_SECRET_KEY` blank until you have real provider credentials — the same log-only/501 fallbacks from local dev apply.
+4. Deploy. Railway gives you a public HTTPS URL (`*.up.railway.app`) — no separate TLS setup needed.
+5. Run the platform-DB setup once against the new database (same commands as local "Backend setup" above, just pointed at Railway's connection string instead of `localhost`): `PlatformBase.metadata.create_all(engine)`, then `python -m app.jobs.create_platform_staff`.
+6. Point the Flutter app at it: `flutter build apk --release --dart-define=API_BASE_URL=https://<your-app>.up.railway.app` (or `appbundle` for Play Store). Without `--dart-define`, the app keeps using the local-dev URLs (`ApiClient.baseUrl`, `mobile/lib/core/api_client.dart`) — this flag is required for any build meant for a real device/store listing.
+
+A custom domain can be pointed at the Railway URL later with no code changes — `API_BASE_URL` just needs to match whatever the DNS ends up being.
+
 ## Mobile app setup
 
 ```bash

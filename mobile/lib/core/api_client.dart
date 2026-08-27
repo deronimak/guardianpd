@@ -15,11 +15,17 @@ class ApiException implements Exception {
 /// Talks to the FastAPI backend. Every request carries the school slug so
 /// the API can route to that school's tenant database (ARCHITECTURE.md §2).
 class ApiClient {
-  // Only the Android emulator needs the 10.0.2.2 alias to reach the host
-  // machine; web/desktop/iOS-simulator all reach it via localhost. Change
-  // this for a physical device (use your machine's LAN IP) or a deployed
-  // backend in production.
+  // Overridable at build time: `flutter build apk --dart-define=API_BASE_URL=https://your-backend.example.com`
+  // (empty string means "not set" — dart-define has no way to omit a key).
+  // Without it, falls back to local-dev defaults: only the Android emulator
+  // needs the 10.0.2.2 alias to reach the host machine; web/desktop/iOS-
+  // simulator all reach it via localhost.
+  static const String _apiBaseUrlOverride = String.fromEnvironment('API_BASE_URL');
+
   static String get baseUrl {
+    if (_apiBaseUrlOverride.isNotEmpty) {
+      return _apiBaseUrlOverride;
+    }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return 'http://10.0.2.2:8000';
     }
