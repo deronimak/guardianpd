@@ -39,7 +39,11 @@ Future<void> main() async {
 // own button styles to stay consistent with each other.
 const _brandPurple = Color(0xFF6A4FE0);
 
-final _buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(10));
+// Fully rounded "pill" shape — the "Lumen" look (see role_select_screen.dart
+// and admin_home_screen.dart for the rest of that direction: a circular
+// icon badge and tiered/tinted button and tile colors built from this same
+// brand purple).
+const _buttonShape = StadiumBorder();
 const _buttonPadding = EdgeInsets.symmetric(horizontal: 24, vertical: 14);
 const _buttonTextStyle = TextStyle(fontSize: 16, fontWeight: FontWeight.w500);
 
