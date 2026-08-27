@@ -191,7 +191,13 @@ class _EnrollGuardianScreenState extends State<EnrollGuardianScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Icon(Icons.check_circle, color: Colors.green.shade600, size: 48),
+        Container(
+          width: 64,
+          height: 64,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(color: Color(0xFFE1F5EE), shape: BoxShape.circle),
+          child: const Icon(Icons.check, color: Color(0xFF0F6E56), size: 30),
+        ),
         const SizedBox(height: 12),
         Text(
           '$_enrolledGuardianName enrolled',

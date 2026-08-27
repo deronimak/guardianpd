@@ -18,6 +18,14 @@ class StaffHomeScreen extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Container(
+                width: 56,
+                height: 56,
+                margin: const EdgeInsets.only(bottom: 24),
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(color: Color(0xFF6A4FE0), shape: BoxShape.circle),
+                child: const Icon(Icons.qr_code_scanner, color: Colors.white, size: 26),
+              ),
               ElevatedButton.icon(
                 icon: const Icon(Icons.qr_code_scanner),
                 label: const Padding(

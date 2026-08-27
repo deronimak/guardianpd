@@ -58,6 +58,12 @@ ButtonStyle _uniformButtonStyle() => ElevatedButton.styleFrom(
       textStyle: _buttonTextStyle,
     );
 
+// Very pale tint of the brand purple — the fill for every text field
+// app-wide (see inputDecorationTheme below), so forms read as soft rounded
+// wells rather than the Material-default underline, matching the rounded
+// cards and pill buttons everywhere else in the Lumen direction.
+final _fieldFill = Color.lerp(_brandPurple, Colors.white, 0.94)!;
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -70,6 +76,29 @@ class MyApp extends StatelessWidget {
         elevatedButtonTheme: ElevatedButtonThemeData(style: _uniformButtonStyle()),
         outlinedButtonTheme: OutlinedButtonThemeData(style: _uniformButtonStyle()),
         textButtonTheme: TextButtonThemeData(style: _uniformButtonStyle()),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: _fieldFill,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: _brandPurple, width: 1.5),
+          ),
+          errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        ),
       ),
       home: const RoleSelectScreen(),
     );

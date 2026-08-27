@@ -122,7 +122,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
         const SizedBox(height: 8),
         TextField(
           controller: _manualTokenController,
-          decoration: const InputDecoration(labelText: 'QR token', border: OutlineInputBorder()),
+          decoration: const InputDecoration(labelText: 'QR token'),
           maxLines: 2,
           onChanged: (_) => setState(() {}),
         ),
