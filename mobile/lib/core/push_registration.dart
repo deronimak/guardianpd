@@ -17,7 +17,11 @@ Future<void> initializeAndRegisterPush(ParentApiClient client) async {
   if (kIsWeb) return;
 
   try {
-    await Firebase.initializeApp();
+    // Already initialized in main.dart on a normal app launch — this guard
+    // just makes the function safe to call standalone (e.g. from tests).
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
 
     final messaging = FirebaseMessaging.instance;
     final settings = await messaging.requestPermission();

@@ -1,9 +1,36 @@
+import 'dart:async';
+import 'dart:ui';
+
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'features/auth/role_select_screen.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    // Android-only, same platform gate as lib/core/push_registration.dart —
+    // this dev setup has no Firebase web/iOS config yet.
+    if (!kIsWeb) {
+      await Firebase.initializeApp();
+      // Crash reports are noise in local dev; only report from real builds.
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
+      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+      PlatformDispatcher.instance.onError = (error, stack) {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+        return true;
+      };
+    }
+
+    runApp(const MyApp());
+  }, (error, stack) {
+    if (!kIsWeb) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    }
+  });
 }
 
 // Single source of truth for button styling — every ElevatedButton,

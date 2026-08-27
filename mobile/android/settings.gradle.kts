@@ -27,6 +27,9 @@ plugins {
     // Firebase natively — see README "Push notifications" for how to get
     // it from the Firebase console.
     id("com.google.gms.google-services") version "4.4.2" apply false
+    // Uploads crash reports to the same Firebase project — see
+    // lib/main.dart for the Dart-side wiring (firebase_crashlytics).
+    id("com.google.firebase.crashlytics") version "3.0.2" apply false
 }
 
 include(":app")

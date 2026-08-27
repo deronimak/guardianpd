@@ -43,6 +43,9 @@ dependencies:
   # wiring for now — see android/app/google-services.json note in README.
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.6
+  # Crash/error reporting to the Firebase console (ARCHITECTURE.md gap:
+  # production crashes were previously invisible) — see lib/main.dart.
+  firebase_crashlytics: ^4.1.6
   # Saving the printed QR credential PDF to a temp file, then handing it to
   # the OS share sheet (which includes "Print" on Android) — see
   # features/staff/enroll_guardian_screen.dart.
