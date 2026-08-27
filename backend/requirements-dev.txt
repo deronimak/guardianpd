@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Test suite (backend/tests/) — see tests/conftest.py for what it needs
+# running locally (the same docker-compose Postgres as dev).
+pytest>=8.3

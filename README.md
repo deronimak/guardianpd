@@ -81,6 +81,24 @@ curl -X POST http://127.0.0.1:8000/platform/schools \
 
 This provisions the school's own Postgres database automatically and seeds its first staff admin account — the `School`/`Subscription`/`StaffUser` rows across both databases are written atomically (see "Cross-database atomicity" below).
 
+## Running tests
+
+Backend (`backend/tests/`, pytest): exercises the real API against a real local Postgres (the same one `docker compose up -d` starts above) — two-phase commit and per-school `CREATE DATABASE` aren't things SQLite/mocks can stand in for. Tests get their own disposable `platform_test` database plus one real tenant database per enrolled school, both torn down automatically after each run.
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+docker compose up -d      # if not already running
+python -m pytest
+```
+
+Mobile (`mobile/test/`, `flutter test`): widget-level navigation smoke tests for the role-select entry point. Login itself isn't exercised here since it's a real network call — that path is covered by the backend suite instead.
+
+```bash
+cd mobile
+flutter test
+```
+
 ## Deploying to production
 
 The backend is a plain Dockerized FastAPI app (`backend/Dockerfile`, verified locally: `docker build -t guardianpd-backend . && docker run` against the dev Postgres, including a real DB-backed login through the container) — it should deploy to any host that can run a Docker image and give it a Postgres connection. These steps assume **Railway**, since each school needs its own dynamically-created database (`CREATE DATABASE`), which Railway's Postgres plugin supports (it's a real Postgres instance, not a restricted single-database proxy) — Render's managed Postgres offering may not grant that privilege, so verify before switching hosts.
