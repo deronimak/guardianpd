@@ -1,10 +1,12 @@
 """Printed QR credential PDF generation — ARCHITECTURE.md §5.
 
-Deliberately renders only the guardian's name and the school's name
-alongside the QR code — no children's names or photos. If a physical page
-is lost or dropped, it should reveal only whose credential it is, not
-which children it's tied to; that link is still fully enforced
-server-side at scan time regardless of what's printed.
+Prints the guardian's name, the school's name, and the linked children's
+names alongside the QR code — a deliberate product choice (children's names
+were originally left off so a lost/dropped page wouldn't reveal which
+children a credential was tied to; the school preferred the convenience of
+matching a credential to a child at a glance instead). The guardian/child
+link is still fully enforced server-side at scan time regardless of what's
+printed here.
 """
 
 import io
@@ -16,7 +18,12 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 
-def generate_qr_credential_pdf(guardian_name: str, school_name: str, qr_token: str) -> bytes:
+def generate_qr_credential_pdf(
+    guardian_name: str,
+    school_name: str,
+    qr_token: str,
+    children_names: list[str] | None = None,
+) -> bytes:
     # qrcode.make() returns a qrcode.image.pil.PilImage wrapper, not a plain
     # PIL Image or file path — ReportLab's ImageReader needs one of the
     # latter, so round-trip it through a PNG buffer.
@@ -43,10 +50,16 @@ def generate_qr_credential_pdf(guardian_name: str, school_name: str, qr_token: s
     pdf.setFont("Helvetica-Bold", 16)
     pdf.drawCentredString(page_width / 2, qr_y - 0.5 * inch, guardian_name)
 
+    next_y = qr_y - 0.85 * inch
+    if children_names:
+        pdf.setFont("Helvetica", 12)
+        pdf.drawCentredString(page_width / 2, next_y, "Children: " + ", ".join(children_names))
+        next_y -= 0.4 * inch
+
     pdf.setFont("Helvetica", 10)
     pdf.drawCentredString(
         page_width / 2,
-        qr_y - 1 * inch,
+        next_y - 0.15 * inch,
         "Present this code at drop-off and pick-up. Report a lost code to the school office immediately.",
     )
 

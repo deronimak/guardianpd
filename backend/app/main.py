@@ -60,6 +60,15 @@ app.include_router(welfare.router)
 _STATIC_ADMIN_DIR = os.path.join(os.path.dirname(__file__), "static", "admin")
 app.mount("/admin", StaticFiles(directory=_STATIC_ADMIN_DIR, html=True), name="admin")
 
+# School Admin web console — same idea as /admin above but for one school's
+# own admin (POST /auth/staff/login + role="admin"), scoped to the one
+# high-volume task that's slow on a phone: bulk guardian+children entry and
+# printing QR credentials. Not a web port of the whole mobile admin surface.
+_STATIC_SCHOOL_ADMIN_DIR = os.path.join(os.path.dirname(__file__), "static", "school_admin")
+app.mount(
+    "/school-admin", StaticFiles(directory=_STATIC_SCHOOL_ADMIN_DIR, html=True), name="school_admin"
+)
+
 # Public privacy policy page, required for the Play Console listing.
 _STATIC_LEGAL_DIR = os.path.join(os.path.dirname(__file__), "static", "legal")
 app.mount("/privacy", StaticFiles(directory=_STATIC_LEGAL_DIR, html=True), name="legal")

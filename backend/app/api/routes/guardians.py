@@ -211,9 +211,9 @@ def download_qr_credential_pdf(
     tenant_db: Session = Depends(get_tenant_db),
 ) -> Response:
     """The printed handout from ARCHITECTURE.md §8/§5 — School Admin prints
-    this from the enroll/search screens. Renders the guardian's most recent
-    non-revoked QR credential; deliberately excludes any children's names
-    or photos (see app/core/qr_pdf.py).
+    this from the enroll/search screens (mobile and web). Renders the
+    guardian's most recent non-revoked QR credential plus the names of
+    every child linked to them (see app/core/qr_pdf.py).
     """
     guardian = tenant_db.get(Guardian, guardian_id)
     if guardian is None:
@@ -228,10 +228,20 @@ def download_qr_credential_pdf(
     if credential is None:
         raise HTTPException(status_code=404, detail="This guardian has no active QR credential")
 
+    children_names = [
+        row.name
+        for row in tenant_db.query(Student.name)
+        .join(GuardianStudentLink, GuardianStudentLink.student_id == Student.id)
+        .filter(GuardianStudentLink.guardian_id == guardian_id)
+        .order_by(Student.name)
+        .all()
+    ]
+
     pdf_bytes = generate_qr_credential_pdf(
         guardian_name=guardian.name,
         school_name=school.name,
         qr_token=credential.token,
+        children_names=children_names,
     )
     filename = f"{guardian.name.replace(' ', '_')}-qr-credential.pdf"
     return Response(
