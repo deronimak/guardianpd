@@ -59,3 +59,7 @@ app.include_router(welfare.router)
 # Logs in against POST /auth/platform/login like any other client.
 _STATIC_ADMIN_DIR = os.path.join(os.path.dirname(__file__), "static", "admin")
 app.mount("/admin", StaticFiles(directory=_STATIC_ADMIN_DIR, html=True), name="admin")
+
+# Public privacy policy page, required for the Play Console listing.
+_STATIC_LEGAL_DIR = os.path.join(os.path.dirname(__file__), "static", "legal")
+app.mount("/privacy", StaticFiles(directory=_STATIC_LEGAL_DIR, html=True), name="legal")

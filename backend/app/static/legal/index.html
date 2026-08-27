@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GuardianPD Privacy Policy</title>
+<style>
+  :root {
+    --purple: #6A4FE0;
+    --text: #1a1a2e;
+    --muted: #5a5a6e;
+    --bg: #fdfbff;
+    --border: #e6e1f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  .wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+  .badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--purple);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  h1 {
+    font-size: 1.6rem;
+    margin: 0;
+  }
+  .updated {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin: 0 0 40px 54px;
+  }
+  h2 {
+    font-size: 1.15rem;
+    margin-top: 40px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    font-size: 1rem;
+    margin-top: 22px;
+    margin-bottom: 6px;
+  }
+  p, li { color: var(--text); }
+  ul { padding-left: 22px; }
+  a { color: var(--purple); }
+  .muted { color: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th { color: var(--muted); font-weight: 600; }
+  footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="badge">PD</div>
+      <h1>GuardianPD Privacy Policy</h1>
+    </header>
+    <p class="updated">Effective and last updated: August 27, 2026</p>
+
+    <p>
+      GuardianPD ("GuardianPD", "we", "us") provides a school pickup/drop-off
+      attendance system used by schools, school staff, and parents/guardians
+      ("Guardians"). This policy explains what information the GuardianPD
+      mobile app and backend collect, how it is used, who it is shared with,
+      and the choices available to you.
+    </p>
+    <p>
+      GuardianPD is provided to a school as its customer. Within a school's
+      account, that school's administrators control which staff and
+      guardians are enrolled and what child records exist — see
+      "Our Role vs. the School's Role" below.
+    </p>
+
+    <h2>Information We Collect</h2>
+
+    <h3>Guardian (parent) account information</h3>
+    <ul>
+      <li>Name, email address, and phone number, provided by the school when enrolling a guardian.</li>
+      <li>A password, if the guardian activates their own login (stored only as a salted hash — we never store or can recover the plaintext password).</li>
+      <li>An optional photo, if the school uploads one for identification purposes.</li>
+    </ul>
+
+    <h3>Child information</h3>
+    <ul>
+      <li>Name, date of birth, and grade, provided by the school.</li>
+      <li>An optional photo, if the school uploads one for identification purposes.</li>
+      <li>Which guardian(s) are authorized to pick up or drop off each child.</li>
+    </ul>
+    <p class="muted">
+      Child records are created and managed by school staff, not by children
+      themselves. GuardianPD is not directed at children and does not
+      knowingly collect information directly from children — see "Children's
+      Privacy" below.
+    </p>
+
+    <h3>School staff account information</h3>
+    <ul>
+      <li>Name, email or username, and a password (stored as a salted hash) for staff and school-admin accounts used to log into the app.</li>
+    </ul>
+
+    <h3>Attendance and QR credential data</h3>
+    <ul>
+      <li>A unique, signed QR code is issued per guardian and used to identify them at scan time. The QR code itself does not contain personal information — it is a signed reference token.</li>
+      <li>Each scan creates an attendance record: which child, which guardian, drop-off or pick-up, the time, and which staff member performed the scan.</li>
+      <li>If a scan doesn't match an expected pattern (e.g. no drop-off recorded for a child by a school-configured cutoff time), the system may flag the event and, if the school has enabled it, notify guardians by email.</li>
+    </ul>
+
+    <h3>Device and notification data</h3>
+    <ul>
+      <li>If a guardian enables push notifications, we store a device push token (via Firebase Cloud Messaging) so we can notify them when their child is scanned in or out.</li>
+    </ul>
+
+    <h3>Billing and payment data</h3>
+    <ul>
+      <li>Schools are billed based on the number of enrolled children. We store invoice records (amount, billing period, payment status) and a school's billing contact email.</li>
+      <li>Payments are processed by Paystack. GuardianPD does not collect or store card numbers or other raw payment credentials — those are handled entirely by Paystack's own systems.</li>
+    </ul>
+
+    <h2>How We Use Information</h2>
+    <ul>
+      <li>To operate the core attendance/pickup feature: verifying a guardian's QR credential, recording drop-off/pick-up events, and showing that history to authorized school staff and to the guardian involved.</li>
+      <li>To send notifications: push notifications and/or emails to guardians when their child is scanned, and welfare-check emails if a school has enabled cutoff-time monitoring.</li>
+      <li>To authenticate accounts and secure the system (password hashing, signed tokens).</li>
+      <li>To bill schools for their subscription based on enrolled child count, and to send billing-related emails to a school's billing contact.</li>
+      <li>To operate and improve the service, including diagnosing technical issues.</li>
+    </ul>
+    <p>We do not sell personal information, and we do not use guardian or child data for advertising.</p>
+
+    <h2>Our Role vs. the School's Role</h2>
+    <p>
+      Each school's data (guardians, children, staff, attendance records) is
+      kept in a separate, isolated database for that school. The school
+      itself decides which children and guardians are enrolled, uploads any
+      photos, and controls which of its own staff can access the system.
+      GuardianPD acts as the technology provider that stores and processes
+      this data on the school's behalf. Requests to correct or remove a
+      specific child's or guardian's record are generally handled by the
+      school directly through their admin account; you can also contact us
+      (below) and we will route the request appropriately.
+    </p>
+
+    <h2>How Information Is Shared</h2>
+    <table>
+      <tr><th>Recipient</th><th>What is shared and why</th></tr>
+      <tr><td>The enrolling school</td><td>All information described above, since the school is the account holder responsible for its students and staff.</td></tr>
+      <tr><td>Paystack</td><td>Billing contact email and invoice amount, to process a school's subscription payment. Paystack's own privacy policy governs their handling of payment details.</td></tr>
+      <tr><td>Firebase Cloud Messaging (Google)</td><td>A device push token, solely to deliver pickup/drop-off push notifications to a guardian's device.</td></tr>
+      <tr><td>Email delivery provider</td><td>Recipient email address and message content, solely to deliver activation, notification, and billing emails.</td></tr>
+    </table>
+    <p>We do not otherwise share personal information with third parties, except where required by law.</p>
+
+    <h2>Data Retention</h2>
+    <p>
+      We retain guardian, child, and attendance records for as long as a
+      school's account remains active, so that attendance history stays
+      available to the school and to guardians. If a school's account is
+      deactivated, its records are retained for a reasonable period in case
+      of reactivation or a legal obligation to retain them, after which they
+      are deleted on request or per our standard retention schedule.
+    </p>
+
+    <h2>Children's Privacy</h2>
+    <p>
+      GuardianPD is intended for use by parents/guardians and school staff,
+      not by children directly. Child information (name, date of birth,
+      grade, optional photo) is entered and managed by school staff or
+      guardians acting as the child's parent/legal guardian, not collected
+      directly from the child through the app. If you are a parent or school
+      administrator and believe a child's information was provided to us in
+      error or without appropriate authorization, contact us at the address
+      below and we will address it promptly.
+    </p>
+
+    <h2>Security</h2>
+    <p>
+      Passwords are stored only as salted hashes. QR credentials are signed
+      tokens rather than raw identifiers. Access to a school's data is
+      restricted to that school's own authenticated staff and guardian
+      accounts. No method of transmission or storage is 100% secure, but we
+      take reasonable technical measures to protect the information we hold.
+    </p>
+
+    <h2>Your Rights and Choices</h2>
+    <ul>
+      <li>Guardians may request access to, correction of, or deletion of their own account information and their child's records by contacting the enrolling school or by emailing us directly.</li>
+      <li>Guardians can disable push notifications at any time from their device's notification settings.</li>
+      <li>Guardians can decline to activate a self-service login; the school can still use the QR credential without it.</li>
+    </ul>
+
+    <h2>Changes to This Policy</h2>
+    <p>
+      If we make material changes to this policy, we will update the
+      "last updated" date above and, where appropriate, notify schools
+      through the app or by email.
+    </p>
+
+    <h2>Contact Us</h2>
+    <p>
+      Questions about this policy, or requests regarding your personal
+      information, can be sent to
+      <a href="mailto:info@de-ronimak.com">info@de-ronimak.com</a>.
+    </p>
+
+    <footer>
+      GuardianPD — School pickup/drop-off attendance system.
+    </footer>
+  </div>
+</body>
+</html>
