@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GuardianPD — School pickup &amp; drop-off attendance</title>
+<meta name="description" content="GuardianPD is a QR-code-based attendance system for school pickup and drop-off, used by school admins, staff, and parents." />
+<style>
+  :root {
+    --purple: #6A4FE0;
+    --purple-dark: #4E39B0;
+    --text: #1a1a2e;
+    --muted: #5a5a6e;
+    --bg: #fdfbff;
+    --panel: #f4f2fc;
+    --border: #e6e1f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  a { color: var(--purple); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  header .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; }
+  .brand .badge {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--purple); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  nav { display: flex; gap: 24px; font-size: 0.92rem; }
+  nav a { color: var(--text); text-decoration: none; }
+  nav a:hover { color: var(--purple); }
+  .nav-cta {
+    background: var(--purple); color: #fff !important;
+    padding: 9px 18px; border-radius: 999px; font-weight: 600;
+  }
+  .nav-cta:hover { background: var(--purple-dark); }
+
+  .hero { text-align: center; padding: 80px 24px 60px; }
+  .hero h1 { font-size: 2.4rem; margin: 0 0 18px; line-height: 1.2; }
+  .hero p { font-size: 1.1rem; color: var(--muted); max-width: 620px; margin: 0 auto 30px; }
+  .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .btn-primary {
+    background: var(--purple); color: #fff; text-decoration: none;
+    padding: 13px 26px; border-radius: 999px; font-weight: 600; font-size: 0.95rem;
+  }
+  .btn-primary:hover { background: var(--purple-dark); }
+  .btn-secondary {
+    border: 1.5px solid var(--purple); color: var(--purple); text-decoration: none;
+    padding: 13px 26px; border-radius: 999px; font-weight: 600; font-size: 0.95rem;
+  }
+  .btn-secondary:hover { background: var(--panel); }
+
+  section { padding: 56px 24px; }
+  section h2 { font-size: 1.6rem; text-align: center; margin: 0 0 8px; }
+  section .lead { text-align: center; color: var(--muted); max-width: 560px; margin: 0 auto 40px; }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 1040px; margin: 0 auto; }
+  .step { background: var(--panel); border-radius: 16px; padding: 26px 22px; }
+  .step .num {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--purple); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; margin-bottom: 14px;
+  }
+  .step h3 { margin: 0 0 8px; font-size: 1.05rem; }
+  .step p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1040px; margin: 0 auto; }
+  .feature { padding: 20px; border: 1px solid var(--border); border-radius: 14px; }
+  .feature h3 { margin: 0 0 8px; font-size: 1rem; }
+  .feature p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+  .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1040px; margin: 0 auto; }
+  .role { text-align: center; padding: 24px 18px; }
+  .role .badge {
+    width: 48px; height: 48px; border-radius: 50%; background: var(--panel); color: var(--purple);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 1.3rem;
+  }
+  .role h3 { margin: 0 0 6px; font-size: 1rem; }
+  .role p { margin: 0; color: var(--muted); font-size: 0.88rem; }
+
+  .pricing-card {
+    max-width: 380px; margin: 0 auto; text-align: center;
+    background: var(--panel); border-radius: 20px; padding: 40px 32px;
+  }
+  .pricing-card .amount { font-size: 2.4rem; font-weight: 700; margin: 6px 0 0; }
+  .pricing-card .amount span { font-size: 1rem; font-weight: 400; color: var(--muted); }
+  .pricing-card ul { list-style: none; padding: 0; margin: 24px 0; text-align: left; font-size: 0.92rem; color: var(--muted); }
+  .pricing-card li { padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .pricing-card li:last-child { border-bottom: none; }
+
+  .contact { text-align: center; }
+  .contact a { font-size: 1.05rem; font-weight: 600; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 30px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  footer .links { margin-bottom: 10px; }
+  footer .links a { color: var(--muted); text-decoration: none; margin: 0 10px; }
+  footer .links a:hover { color: var(--purple); }
+
+  @media (max-width: 760px) {
+    nav { display: none; }
+    .steps, .features, .roles { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 1.9rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand"><span class="badge">PD</span> GuardianPD</div>
+    <nav>
+      <a href="#how-it-works">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#contact">Contact</a>
+    </nav>
+    <a class="nav-cta" href="/school-admin/">School Admin login</a>
+  </div>
+</header>
+
+<div class="hero">
+  <h1>School pickup and drop-off, verified by QR code</h1>
+  <p>
+    GuardianPD replaces the sign-out clipboard with a secure QR credential
+    for every guardian — school staff scan, the system confirms who's
+    authorized, and parents get notified the moment their child is
+    dropped off or picked up.
+  </p>
+  <div class="hero-ctas">
+    <a class="btn-primary" href="#contact">Get GuardianPD for your school</a>
+    <a class="btn-secondary" href="#how-it-works">See how it works</a>
+  </div>
+</div>
+
+<section id="how-it-works">
+  <h2>How it works</h2>
+  <p class="lead">Three roles, one shared record of who picked up which child, and when.</p>
+  <div class="steps">
+    <div class="step">
+      <div class="num">1</div>
+      <h3>Enroll guardians and children</h3>
+      <p>The School Admin adds each guardian and their children — on the mobile app, or in bulk on the web console. A signed QR credential is generated automatically.</p>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <h3>Print or share the credential</h3>
+      <p>Print the guardian's QR credential from the office, or share it directly — it shows the guardian's name and their children, ready for the car line or gate.</p>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <h3>Scan at drop-off and pick-up</h3>
+      <p>School Staff scan the code with their phone. GuardianPD checks the guardian is actually authorized for that child before recording the event — and alerts real guardians if it isn't.</p>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="background: var(--panel);">
+  <h2>Built for a real school gate</h2>
+  <p class="lead">Not just a QR scanner — a system that checks authorization every time.</p>
+  <div class="features">
+    <div class="feature">
+      <h3>Authorization, not just validity</h3>
+      <p>Every scan is checked against exactly who's allowed to collect that specific child, not just whether the code is real.</p>
+    </div>
+    <div class="feature">
+      <h3>Real-time guardian alerts</h3>
+      <p>Every guardian linked to a child gets notified on drop-off and pick-up — including if an unrecognized code is scanned for their child.</p>
+    </div>
+    <div class="feature">
+      <h3>Missed-attendance emails</h3>
+      <p>Schools set daily drop-off and pick-up cutoff times; GuardianPD emails guardians automatically if a child hasn't been signed in or out.</p>
+    </div>
+    <div class="feature">
+      <h3>Mobile app for staff and parents</h3>
+      <p>School Staff scan from their phone; guardians see live pickup/drop-off history for every child linked to them.</p>
+    </div>
+    <div class="feature">
+      <h3>Web console for bulk enrollment</h3>
+      <p>Adding guardians and children for a whole class is faster on a keyboard — the web console covers that, plus reprinting credentials.</p>
+    </div>
+    <div class="feature">
+      <h3>Printed credentials, no app required for guardians</h3>
+      <p>A guardian doesn't need a smartphone to be picked up correctly — a printed QR credential works at the gate either way.</p>
+    </div>
+  </div>
+</section>
+
+<section id="roles">
+  <h2>Who uses GuardianPD</h2>
+  <div class="roles">
+    <div class="role">
+      <div class="badge">A</div>
+      <h3>School Admin</h3>
+      <p>Enrolls guardians and children, manages staff accounts, prints QR credentials.</p>
+    </div>
+    <div class="role">
+      <div class="badge">S</div>
+      <h3>School Staff</h3>
+      <p>A focused, single-purpose screen: scan a guardian's QR code at drop-off or pick-up.</p>
+    </div>
+    <div class="role">
+      <div class="badge">G</div>
+      <h3>Guardian</h3>
+      <p>Gets notified every time their child is signed in or out, by whom, and when.</p>
+    </div>
+  </div>
+</section>
+
+<section id="pricing" style="background: var(--panel);">
+  <h2>Simple, per-child pricing</h2>
+  <p class="lead">One rate, billed automatically every 30 days based on enrolled children.</p>
+  <div class="pricing-card">
+    <div>Per enrolled child</div>
+    <div class="amount">₦500 <span>/ 30 days</span></div>
+    <ul>
+      <li>Unlimited guardians and staff accounts</li>
+      <li>Unlimited scans and notifications</li>
+      <li>Web console + mobile app included</li>
+      <li>Cancel or pause anytime</li>
+    </ul>
+    <a class="btn-primary" href="#contact">Enroll your school</a>
+  </div>
+</section>
+
+<section id="contact" class="contact">
+  <h2>Get in touch</h2>
+  <p class="lead">Want GuardianPD at your school, or have a question about an existing account?</p>
+  <a href="mailto:info@de-ronimak.com">info@de-ronimak.com</a>
+</section>
+
+<footer>
+  <div class="links">
+    <a href="/privacy/">Privacy policy</a>
+    <a href="/terms/">Terms of service</a>
+    <a href="/refund/">Refund policy</a>
+    <a href="/school-admin/">School Admin login</a>
+  </div>
+  GuardianPD — School pickup/drop-off attendance system.
+</footer>
+
+</body>
+</html>

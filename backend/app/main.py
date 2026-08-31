@@ -73,9 +73,23 @@ app.mount(
 _STATIC_LEGAL_DIR = os.path.join(os.path.dirname(__file__), "static", "legal")
 app.mount("/privacy", StaticFiles(directory=_STATIC_LEGAL_DIR, html=True), name="legal")
 
+# Terms of service + refund policy — Paystack's merchant verification (and
+# good practice generally) expects these alongside the privacy policy.
+_STATIC_TERMS_DIR = os.path.join(_STATIC_LEGAL_DIR, "terms")
+app.mount("/terms", StaticFiles(directory=_STATIC_TERMS_DIR, html=True), name="terms")
+_STATIC_REFUND_DIR = os.path.join(_STATIC_LEGAL_DIR, "refund")
+app.mount("/refund", StaticFiles(directory=_STATIC_REFUND_DIR, html=True), name="refund")
+
 # Where Paystack redirects a school's browser after a checkout attempt
 # (see PAYSTACK_CALLBACK_URL / app/api/routes/billing.py). The actual
 # invoice status update happens via the /platform/billing/webhook
 # server-to-server call, not this page — it's just a human-readable landing.
 _STATIC_BILLING_DIR = os.path.join(os.path.dirname(__file__), "static", "billing_thank_you")
 app.mount("/billing/thank-you", StaticFiles(directory=_STATIC_BILLING_DIR, html=True), name="billing_thank_you")
+
+# Public marketing site — Paystack's merchant verification requires an
+# active website describing the business, separate from the API/consoles
+# above. Mounted at "/" and registered last so it only ever catches
+# requests no earlier, more specific route (API or console) already matched.
+_STATIC_SITE_DIR = os.path.join(os.path.dirname(__file__), "static", "site")
+app.mount("/", StaticFiles(directory=_STATIC_SITE_DIR, html=True), name="site")
