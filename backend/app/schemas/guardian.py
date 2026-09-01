@@ -34,6 +34,19 @@ class GuardianSummaryOut(BaseModel):
     name: str
     email: str | None
     phone: str | None
+    children: list[LinkedStudentOut] = Field(default_factory=list)
+
+
+class GuardianUpdateRequest(BaseModel):
+    """Partial update — only fields actually present in the request body are
+    changed. Editing email also updates the guardian's shared PlatformUser
+    login identity (see app/api/routes/guardians.py's update_guardian),
+    since Guardian.email is a denormalized copy of it.
+    """
+
+    name: str | None = None
+    email: EmailStr | None = None
+    phone: str | None = None
 
 
 class GuardianLookupOut(BaseModel):

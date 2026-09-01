@@ -12,12 +12,20 @@ from app.core.security import generate_qr_token, verify_qr_token
 from app.db.platform import get_platform_db
 from app.db.twophase import get_twophase_session
 from app.models.platform import GuardianMembership, PlatformUser, School
-from app.models.tenant import Guardian, GuardianStudentLink, QRCredential, Student
+from app.models.tenant import (
+    AttendanceEvent,
+    Guardian,
+    GuardianStudentLink,
+    Notification,
+    QRCredential,
+    Student,
+)
 from app.schemas.guardian import (
     GuardianCreateRequest,
     GuardianLookupOut,
     GuardianOut,
     GuardianSummaryOut,
+    GuardianUpdateRequest,
 )
 
 router = APIRouter(prefix="/guardians", tags=["guardians"], dependencies=[Depends(get_current_staff)])
@@ -121,9 +129,11 @@ def create_guardian(
 
 
 @router.get("", response_model=list[GuardianSummaryOut], dependencies=[Depends(require_school_admin)])
-def search_guardians(query: str | None = None, tenant_db: Session = Depends(get_tenant_db)) -> list[Guardian]:
+def search_guardians(query: str | None = None, tenant_db: Session = Depends(get_tenant_db)) -> list[dict]:
     """Backs the School Admin "search guardians" screen — print QR
-    credentials and resend activation links both start here.
+    credentials, resend activation, and now edit/delete guardian and
+    children records all start here, so each result includes its linked
+    children rather than making the caller fetch them separately.
     """
     q = tenant_db.query(Guardian)
     if query:
@@ -131,7 +141,115 @@ def search_guardians(query: str | None = None, tenant_db: Session = Depends(get_
         q = q.filter(
             (Guardian.name.ilike(like)) | (Guardian.email.ilike(like)) | (Guardian.phone.ilike(like))
         )
-    return q.order_by(Guardian.name).all()
+    guardians = q.order_by(Guardian.name).all()
+
+    children_by_guardian: dict[uuid.UUID, list[Student]] = {g.id: [] for g in guardians}
+    if guardians:
+        rows = (
+            tenant_db.query(GuardianStudentLink.guardian_id, Student)
+            .join(Student, Student.id == GuardianStudentLink.student_id)
+            .filter(GuardianStudentLink.guardian_id.in_(children_by_guardian.keys()))
+            .order_by(Student.name)
+            .all()
+        )
+        for guardian_id, student in rows:
+            children_by_guardian[guardian_id].append(student)
+
+    return [
+        {
+            "id": g.id,
+            "name": g.name,
+            "email": g.email,
+            "phone": g.phone,
+            "children": children_by_guardian[g.id],
+        }
+        for g in guardians
+    ]
+
+
+@router.patch("/{guardian_id}", response_model=GuardianSummaryOut, dependencies=[Depends(require_school_admin)])
+def update_guardian(
+    guardian_id: uuid.UUID,
+    payload: GuardianUpdateRequest,
+    tenant_db: Session = Depends(get_tenant_db),
+    platform_db: Session = Depends(get_platform_db),
+) -> dict:
+    """Edits a guardian's own record. Editing email also updates their
+    shared PlatformUser login (Guardian.email is a denormalized copy of it
+    — see GuardianUpdateRequest) so the two never drift apart; rejected
+    with 409 if another parent identity already uses that email.
+    """
+    guardian = tenant_db.get(Guardian, guardian_id)
+    if guardian is None:
+        raise HTTPException(status_code=404, detail="Unknown guardian")
+
+    updates = payload.model_dump(exclude_unset=True)
+
+    if "email" in updates and updates["email"] != guardian.email:
+        new_email = updates["email"]
+        existing = platform_db.query(PlatformUser).filter_by(email=new_email).first()
+        if existing is not None and existing.id != guardian.platform_user_id:
+            raise HTTPException(status_code=409, detail="Another account already uses that email")
+        platform_user = platform_db.get(PlatformUser, guardian.platform_user_id)
+        if platform_user is not None:
+            platform_user.email = new_email
+            platform_db.commit()
+
+    for field, value in updates.items():
+        setattr(guardian, field, value)
+    tenant_db.commit()
+    tenant_db.refresh(guardian)
+
+    children = (
+        tenant_db.query(Student)
+        .join(GuardianStudentLink, GuardianStudentLink.student_id == Student.id)
+        .filter(GuardianStudentLink.guardian_id == guardian_id)
+        .order_by(Student.name)
+        .all()
+    )
+    return {"id": guardian.id, "name": guardian.name, "email": guardian.email, "phone": guardian.phone, "children": children}
+
+
+@router.delete("/{guardian_id}", status_code=204, dependencies=[Depends(require_school_admin)])
+def delete_guardian(
+    guardian_id: uuid.UUID,
+    school: School = Depends(get_school),
+) -> Response:
+    """Hard delete, same philosophy as the Master Admin's student delete
+    (app/api/routes/schools.py) — a single guardian is low enough blast
+    radius to remove outright, including their attendance history (none of
+    the FKs pointing at guardians.id cascade automatically). Only this
+    school's membership is removed from the platform DB; the shared
+    PlatformUser login and any other school's membership are untouched,
+    since the same parent identity can be linked to guardians at multiple
+    schools.
+    """
+    db = get_twophase_session(school.tenant_db_name)
+    try:
+        guardian = db.get(Guardian, guardian_id)
+        if guardian is None:
+            raise HTTPException(status_code=404, detail="Unknown guardian")
+
+        event_ids = [row.id for row in db.query(AttendanceEvent.id).filter_by(guardian_id=guardian_id).all()]
+        if event_ids:
+            db.query(Notification).filter(Notification.event_id.in_(event_ids)).delete(synchronize_session=False)
+        db.query(Notification).filter_by(guardian_id=guardian_id).delete(synchronize_session=False)
+        db.query(AttendanceEvent).filter_by(guardian_id=guardian_id).delete(synchronize_session=False)
+        db.query(QRCredential).filter_by(guardian_id=guardian_id).delete(synchronize_session=False)
+        db.query(GuardianStudentLink).filter_by(guardian_id=guardian_id).delete(synchronize_session=False)
+
+        db.query(GuardianMembership).filter_by(school_id=school.id, tenant_guardian_id=guardian_id).delete(
+            synchronize_session=False
+        )
+
+        db.delete(guardian)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return Response(status_code=204)
 
 
 @router.post("/{guardian_id}/resend-activation", dependencies=[Depends(require_school_admin)])

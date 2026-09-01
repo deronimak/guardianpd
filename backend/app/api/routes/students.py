@@ -1,11 +1,18 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant_db, require_school_admin
-from app.models.tenant import GuardianStudentLink, Student
-from app.schemas.student import LinkCreateRequest, StudentCreateRequest, StudentOut
+from app.models.tenant import (
+    AttendanceEvent,
+    ExpectedAbsence,
+    GuardianStudentLink,
+    Notification,
+    Student,
+    WelfareAlertLog,
+)
+from app.schemas.student import LinkCreateRequest, StudentCreateRequest, StudentOut, StudentUpdateRequest
 
 router = APIRouter(prefix="/students", tags=["students"], dependencies=[Depends(require_school_admin)])
 
@@ -45,3 +52,51 @@ def link_guardian(
     tenant_db.add(link)
     tenant_db.commit()
     return {"status": "linked", "link_id": link.id}
+
+
+@router.patch("/{student_id}", response_model=StudentOut)
+def update_student(
+    student_id: uuid.UUID,
+    payload: StudentUpdateRequest,
+    tenant_db: Session = Depends(get_tenant_db),
+) -> Student:
+    """School-Admin-scoped edit — same shape as the Master Admin's
+    equivalent (app/api/routes/schools.py) but reachable with just a staff
+    JWT for this school, not a platform-staff login.
+    """
+    student = tenant_db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Unknown student")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(student, field, value)
+    tenant_db.commit()
+    tenant_db.refresh(student)
+    return student
+
+
+@router.delete("/{student_id}", status_code=204)
+def delete_student(
+    student_id: uuid.UUID,
+    tenant_db: Session = Depends(get_tenant_db),
+) -> Response:
+    """Hard delete — same cascade as the Master Admin's equivalent
+    (app/api/routes/schools.py's delete_school_student): none of the FKs
+    pointing at students.id cascade automatically, so dependent rows are
+    cleaned up explicitly, in dependency order, inside one transaction.
+    """
+    student = tenant_db.get(Student, student_id)
+    if student is None:
+        raise HTTPException(status_code=404, detail="Unknown student")
+
+    event_ids = [row.id for row in tenant_db.query(AttendanceEvent.id).filter_by(student_id=student_id).all()]
+    if event_ids:
+        tenant_db.query(Notification).filter(Notification.event_id.in_(event_ids)).delete(
+            synchronize_session=False
+        )
+    tenant_db.query(AttendanceEvent).filter_by(student_id=student_id).delete(synchronize_session=False)
+    tenant_db.query(ExpectedAbsence).filter_by(student_id=student_id).delete(synchronize_session=False)
+    tenant_db.query(WelfareAlertLog).filter_by(student_id=student_id).delete(synchronize_session=False)
+    tenant_db.query(GuardianStudentLink).filter_by(student_id=student_id).delete(synchronize_session=False)
+    tenant_db.delete(student)
+    tenant_db.commit()
+    return Response(status_code=204)

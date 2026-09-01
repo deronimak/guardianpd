@@ -68,3 +68,84 @@ def test_guardian_creation_requires_authentication(client, enrolled_school):
         headers={"X-School-Slug": enrolled_school["slug"]},
     )
     assert resp.status_code == 401
+
+
+def test_search_guardians_includes_children(client, school_admin_headers):
+    create_resp = client.post("/guardians", json=_guardian_payload(name="Nora Naveen"), headers=school_admin_headers)
+    assert create_resp.status_code == 201
+
+    resp = client.get("/guardians", params={"query": "Nora"}, headers=school_admin_headers)
+    assert resp.status_code == 200
+    body = resp.json()[0]
+    assert {c["name"] for c in body["children"]} == {"Charlie Child", "Chloe Child"}
+
+
+def test_update_guardian_name_and_phone(client, school_admin_headers):
+    create_resp = client.post("/guardians", json=_guardian_payload(), headers=school_admin_headers)
+    guardian_id = create_resp.json()["id"]
+
+    resp = client.patch(
+        f"/guardians/{guardian_id}",
+        json={"name": "Gina Updated", "phone": "+15550001111"},
+        headers=school_admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["name"] == "Gina Updated"
+    assert body["phone"] == "+15550001111"
+    assert len(body["children"]) == 2
+
+
+def test_update_guardian_email_conflict(client, school_admin_headers):
+    email_a = f"guardian-a-{uuid.uuid4().hex[:8]}@example.com"
+    email_b = f"guardian-b-{uuid.uuid4().hex[:8]}@example.com"
+    client.post("/guardians", json=_guardian_payload(email=email_a, children=[]), headers=school_admin_headers)
+    guardian_b = client.post(
+        "/guardians", json=_guardian_payload(email=email_b, children=[]), headers=school_admin_headers
+    ).json()
+
+    resp = client.patch(
+        f"/guardians/{guardian_b['id']}",
+        json={"email": email_a},
+        headers=school_admin_headers,
+    )
+    assert resp.status_code == 409
+
+
+def test_update_guardian_not_found(client, school_admin_headers):
+    resp = client.patch(
+        f"/guardians/{uuid.uuid4()}",
+        json={"name": "Nobody"},
+        headers=school_admin_headers,
+    )
+    assert resp.status_code == 404
+
+
+def test_delete_guardian(client, school_admin_headers):
+    create_resp = client.post("/guardians", json=_guardian_payload(name="Deletable Guardian"), headers=school_admin_headers)
+    guardian_id = create_resp.json()["id"]
+
+    resp = client.delete(f"/guardians/{guardian_id}", headers=school_admin_headers)
+    assert resp.status_code == 204
+
+    search_resp = client.get("/guardians", params={"query": "Deletable"}, headers=school_admin_headers)
+    assert search_resp.json() == []
+
+    pdf_resp = client.get(f"/guardians/{guardian_id}/qr-credential.pdf", headers=school_admin_headers)
+    assert pdf_resp.status_code == 404
+
+
+def test_delete_guardian_not_found(client, school_admin_headers):
+    resp = client.delete(f"/guardians/{uuid.uuid4()}", headers=school_admin_headers)
+    assert resp.status_code == 404
+
+
+def test_school_staff_cannot_update_or_delete_guardians(client, school_admin_headers, school_staff_headers):
+    create_resp = client.post("/guardians", json=_guardian_payload(), headers=school_admin_headers)
+    guardian_id = create_resp.json()["id"]
+
+    update_resp = client.patch(f"/guardians/{guardian_id}", json={"name": "x"}, headers=school_staff_headers)
+    assert update_resp.status_code == 403
+
+    delete_resp = client.delete(f"/guardians/{guardian_id}", headers=school_staff_headers)
+    assert delete_resp.status_code == 403

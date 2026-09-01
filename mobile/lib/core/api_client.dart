@@ -127,6 +127,73 @@ class ApiClient {
     }
   }
 
+  /// Edits a guardian's own record. Passing [email] also updates their
+  /// shared parent login identity server-side (see the backend route's
+  /// docstring) — a 409 means another account already uses that email.
+  Future<Map<String, dynamic>> updateGuardian(
+    String guardianId, {
+    String? name,
+    String? email,
+    String? phone,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/guardians/$guardianId'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (email != null) 'email': email,
+        if (phone != null) 'phone': phone,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Hard delete — also removes the guardian's QR credential and
+  /// attendance history at this school. Cannot be undone.
+  Future<void> deleteGuardian(String guardianId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/guardians/$guardianId'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 204) {
+      throw ApiException(response.statusCode, response.body);
+    }
+  }
+
+  Future<Map<String, dynamic>> updateStudent(
+    String studentId, {
+    String? name,
+    String? grade,
+  }) async {
+    final response = await http.patch(
+      Uri.parse('$baseUrl/students/$studentId'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (grade != null) 'grade': grade,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Hard delete — also removes this child's attendance history and
+  /// guardian links. Cannot be undone.
+  Future<void> deleteStudent(String studentId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/students/$studentId'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 204) {
+      throw ApiException(response.statusCode, response.body);
+    }
+  }
+
   Future<void> createStaffAccount({required String username, required String password}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/staff'),

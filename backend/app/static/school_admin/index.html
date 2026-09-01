@@ -73,8 +73,23 @@
     border: 1px solid var(--accent);
   }
   button.secondary:hover { background: #f1eefb; }
+  button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  button.danger:hover { background: #fef2f2; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
   .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+  .input {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    width: 100%;
+  }
+  .edit-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 10px 0; }
+  .edit-grid label { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+  .children-list { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+  .child-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: 13px; }
+  .child-row .child-edit { display: flex; gap: 6px; flex: 1; }
+  .child-row .child-edit .input { font-size: 12px; padding: 6px 8px; }
   .success-banner {
     background: #f1eefb;
     border: 1px solid var(--accent);
@@ -371,21 +386,136 @@
     try {
       const path = `/guardians${query ? "?query=" + encodeURIComponent(query) : ""}`;
       const guardians = await apiFetch(path);
+      window.__guardians = Object.fromEntries(guardians.map((g) => [g.id, g]));
       if (guardians.length === 0) {
         container.innerHTML = '<p class="empty">No guardians matched.</p>';
         return;
       }
-      container.innerHTML = guardians.map((g) => `
-        <div class="guardian-card">
+      container.innerHTML = guardians.map((g) => guardianCardHtml(g)).join("");
+    } catch (e) {
+      container.innerHTML = `<p class="empty">Search failed: ${e.message}</p>`;
+    }
+  }
+
+  function guardianCardHtml(g) {
+    const childrenHtml = g.children.length
+      ? g.children.map((c) => childRowHtml(g.id, c)).join("")
+      : '<p class="empty" style="padding:2px 0;">No children linked.</p>';
+    return `
+      <div class="guardian-card" id="guardian-card-${g.id}">
+        <div id="guardian-view-${g.id}">
           <div class="name">${g.name}</div>
           <div class="meta">${g.email || "—"} ${g.phone ? " · " + g.phone : ""}</div>
           <div class="row-actions">
             <button onclick="printCredential('${g.id}', '${escapeAttr(g.name)}')">Print QR</button>
             <button class="secondary" onclick="resendActivation('${g.id}', '${escapeAttr(g.name)}')">Resend activation</button>
+            <button class="secondary" onclick="startEditGuardian('${g.id}')">Edit</button>
+            <button class="danger" onclick="deleteGuardian('${g.id}', '${escapeAttr(g.name)}')">Delete</button>
           </div>
-        </div>`).join("");
+        </div>
+        <div id="guardian-edit-${g.id}" style="display:none;"></div>
+        <div class="children-list" id="children-list-${g.id}">${childrenHtml}</div>
+      </div>`;
+  }
+
+  function childRowHtml(guardianId, c) {
+    return `
+      <div class="child-row" id="child-row-${c.id}">
+        <span id="child-view-${c.id}">${c.name}${c.grade ? " · " + c.grade : ""}</span>
+        <span class="row-actions">
+          <button class="secondary" onclick="startEditChild('${guardianId}', '${c.id}')">Edit</button>
+          <button class="danger" onclick="deleteChild('${guardianId}', '${c.id}', '${escapeAttr(c.name)}')">Delete</button>
+        </span>
+      </div>`;
+  }
+
+  function startEditGuardian(guardianId) {
+    const g = window.__guardians[guardianId];
+    document.getElementById(`guardian-view-${guardianId}`).style.display = "none";
+    const editEl = document.getElementById(`guardian-edit-${guardianId}`);
+    editEl.style.display = "block";
+    editEl.innerHTML = `
+      <div class="edit-grid">
+        <div><label>Name</label><input class="input" id="edit-name-${guardianId}" value="${escapeAttr(g.name)}" /></div>
+        <div><label>Email</label><input class="input" id="edit-email-${guardianId}" value="${escapeAttr(g.email || "")}" /></div>
+        <div><label>Phone</label><input class="input" id="edit-phone-${guardianId}" value="${escapeAttr(g.phone || "")}" /></div>
+      </div>
+      <div class="row-actions">
+        <button onclick="saveGuardianEdit('${guardianId}')">Save</button>
+        <button class="secondary" onclick="cancelEditGuardian('${guardianId}')">Cancel</button>
+      </div>`;
+  }
+
+  function cancelEditGuardian(guardianId) {
+    document.getElementById(`guardian-edit-${guardianId}`).style.display = "none";
+    document.getElementById(`guardian-edit-${guardianId}`).innerHTML = "";
+    document.getElementById(`guardian-view-${guardianId}`).style.display = "block";
+  }
+
+  async function saveGuardianEdit(guardianId) {
+    const payload = {
+      name: document.getElementById(`edit-name-${guardianId}`).value.trim(),
+      email: document.getElementById(`edit-email-${guardianId}`).value.trim(),
+      phone: document.getElementById(`edit-phone-${guardianId}`).value.trim() || null,
+    };
+    try {
+      const updated = await apiFetch(`/guardians/${guardianId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      window.__guardians[guardianId] = updated;
+      document.getElementById(`guardian-card-${guardianId}`).outerHTML = guardianCardHtml(updated);
+      log(`${updated.name} updated.`, true);
     } catch (e) {
-      container.innerHTML = `<p class="empty">Search failed: ${e.message}</p>`;
+      log(`Update failed: ${e.message}`, false);
+    }
+  }
+
+  async function deleteGuardian(guardianId, name) {
+    if (!confirm(`Permanently delete ${name}? This also removes their QR credential and attendance history. This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/guardians/${guardianId}`, { method: "DELETE" });
+      document.getElementById(`guardian-card-${guardianId}`).remove();
+      log(`${name} deleted.`, true);
+    } catch (e) {
+      log(`Delete failed: ${e.message}`, false);
+    }
+  }
+
+  function startEditChild(guardianId, studentId) {
+    const g = window.__guardians[guardianId];
+    const c = g.children.find((child) => child.id === studentId);
+    const row = document.getElementById(`child-row-${studentId}`);
+    row.innerHTML = `
+      <span class="child-edit">
+        <input class="input" id="child-edit-name-${studentId}" value="${escapeAttr(c.name)}" placeholder="Name" />
+        <input class="input" id="child-edit-grade-${studentId}" value="${escapeAttr(c.grade || "")}" placeholder="Grade" style="max-width:90px;" />
+      </span>
+      <span class="row-actions">
+        <button onclick="saveChildEdit('${guardianId}', '${studentId}')">Save</button>
+        <button class="secondary" onclick="searchGuardians()">Cancel</button>
+      </span>`;
+  }
+
+  async function saveChildEdit(guardianId, studentId) {
+    const payload = {
+      name: document.getElementById(`child-edit-name-${studentId}`).value.trim(),
+      grade: document.getElementById(`child-edit-grade-${studentId}`).value.trim() || null,
+    };
+    try {
+      await apiFetch(`/students/${studentId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      log(`${payload.name} updated.`, true);
+      await searchGuardians();
+    } catch (e) {
+      log(`Update failed: ${e.message}`, false);
+    }
+  }
+
+  async function deleteChild(guardianId, studentId, name) {
+    if (!confirm(`Permanently delete ${name}? This also removes their attendance history. This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/students/${studentId}`, { method: "DELETE" });
+      log(`${name} deleted.`, true);
+      await searchGuardians();
+    } catch (e) {
+      log(`Delete failed: ${e.message}`, false);
     }
   }
 
