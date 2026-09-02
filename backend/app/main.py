@@ -80,6 +80,14 @@ app.mount("/terms", StaticFiles(directory=_STATIC_TERMS_DIR, html=True), name="t
 _STATIC_REFUND_DIR = os.path.join(_STATIC_LEGAL_DIR, "refund")
 app.mount("/refund", StaticFiles(directory=_STATIC_REFUND_DIR, html=True), name="refund")
 
+# Account/data deletion request page — the URL Play Console's Data Safety
+# form links to under "Account deletion". No self-service delete endpoint
+# exists yet, so this explains the (manual, email-based) request process.
+_STATIC_DELETE_ACCOUNT_DIR = os.path.join(_STATIC_LEGAL_DIR, "delete-account")
+app.mount(
+    "/delete-account", StaticFiles(directory=_STATIC_DELETE_ACCOUNT_DIR, html=True), name="delete_account"
+)
+
 # Where Paystack redirects a school's browser after a checkout attempt
 # (see PAYSTACK_CALLBACK_URL / app/api/routes/billing.py). The actual
 # invoice status update happens via the /platform/billing/webhook
