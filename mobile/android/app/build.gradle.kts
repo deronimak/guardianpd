@@ -75,6 +75,14 @@ android {
             // android/key.properties, both gitignored) — required for Play
             // Console, which rejects AABs signed with the debug keystore.
             signingConfig = signingConfigs.getByName("release")
+            // Embeds full native (Flutter engine + plugin .so) debug symbols
+            // directly in the AAB, so Play Console's crash/ANR reports for
+            // native frames are symbolicated instead of raw addresses —
+            // otherwise Play Console flags every upload with a warning
+            // asking for a separate symbols file.
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
         }
     }
 }
