@@ -49,7 +49,11 @@ android {
         // dependency (androidx.camera:camera-core requires 23) — surfaced
         // by a real build attempt.
         minSdk = 23
-        targetSdk = flutter.targetSdkVersion
+        // Pinned above Flutter 3.29's bundled default (35) — Play Console
+        // now requires targeting at least API 36, surfaced by a real
+        // upload attempt, not guessed. compileSdk is already 36 above, so
+        // this doesn't need a separate bump there too.
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
