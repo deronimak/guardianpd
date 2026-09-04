@@ -16,15 +16,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 720
 
-    # Welfare-email delivery (ARCHITECTURE.md §7). Left blank by default so
+    # Welfare-email delivery (ARCHITECTURE.md §7) via Postmark's HTTP API —
+    # not raw SMTP. Railway's outbound network silently times out on SMTP
+    # ports (25/465/587), a common PaaS anti-spam egress policy; Postmark's
+    # API is plain HTTPS, which is never blocked. Left blank by default so
     # the welfare job runs end-to-end in local dev without a real provider
     # — see app/core/email.py for the log-only fallback this enables.
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_user: str = ""
-    smtp_password: str = ""
-    smtp_from_email: str = "attendance@example.com"
-    smtp_use_tls: bool = True
+    postmark_server_token: str = ""
+    email_from_address: str = "attendance@example.com"
 
     # Push notifications on scan (ARCHITECTURE.md §5 point 5). Requires a
     # real Firebase project's service-account JSON — left blank by default

@@ -105,7 +105,7 @@ The backend is a plain Dockerized FastAPI app (`backend/Dockerfile`, verified lo
 
 1. Create a Railway account/project, add a **Postgres** service to it (this becomes your platform database server — every school's tenant database gets created on this same instance).
 2. Add a second service for the backend, pointed at this repo's `backend/` directory (Railway auto-detects the `Dockerfile`).
-3. Copy the values from `backend/.env.production` (generated locally, gitignored — includes fresh `JWT_SECRET_KEY`/`QR_SIGNING_KEY`, distinct from the local-dev defaults) into the backend service's environment variables in the Railway dashboard, filling in `PLATFORM_DATABASE_URL`/`POSTGRES_ADMIN_URL`/`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_USER`/`POSTGRES_PASSWORD` from the Postgres service's connection details (Railway shows these on that service's "Variables" tab). Leave `SMTP_HOST`/`FIREBASE_CREDENTIALS_JSON`/`PAYSTACK_SECRET_KEY` blank until you have real provider credentials — the same log-only/501 fallbacks from local dev apply.
+3. Copy the values from `backend/.env.production` (generated locally, gitignored — includes fresh `JWT_SECRET_KEY`/`QR_SIGNING_KEY`, distinct from the local-dev defaults) into the backend service's environment variables in the Railway dashboard, filling in `PLATFORM_DATABASE_URL`/`POSTGRES_ADMIN_URL`/`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_USER`/`POSTGRES_PASSWORD` from the Postgres service's connection details (Railway shows these on that service's "Variables" tab). Leave `POSTMARK_SERVER_TOKEN`/`FIREBASE_CREDENTIALS_JSON`/`PAYSTACK_SECRET_KEY` blank until you have real provider credentials — the same log-only/501 fallbacks from local dev apply. Note: use Postmark (or another HTTP-API email provider), not raw SMTP — most PaaS hosts, Railway included, silently firewall outbound SMTP ports.
 4. Deploy. Railway gives you a public HTTPS URL (`*.up.railway.app`) — no separate TLS setup needed.
 5. Run the platform-DB setup once against the new database (same commands as local "Backend setup" above, just pointed at Railway's connection string instead of `localhost`): `PlatformBase.metadata.create_all(engine)`, then `python -m app.jobs.create_platform_staff`.
 6. Point the Flutter app at it: `flutter build apk --release --dart-define=API_BASE_URL=https://<your-app>.up.railway.app` (or `appbundle` for Play Store). Without `--dart-define`, the app keeps using the local-dev URLs (`ApiClient.baseUrl`, `mobile/lib/core/api_client.dart`) — this flag is required for any build meant for a real device/store listing.
@@ -128,7 +128,7 @@ The API base URL is set in `lib/core/api_client.dart` — defaults to `10.0.2.2:
 
 ## Parent accounts
 
-School staff create the guardian record (`POST /guardians`) as before; that now also emails an activation code to the guardian (logged instead of sent if `SMTP_HOST` is unset, same as the welfare job). The parent then:
+School staff create the guardian record (`POST /guardians`) as before; that now also emails an activation code to the guardian (logged instead of sent if `POSTMARK_SERVER_TOKEN` is unset, same as the welfare job). The parent then:
 
 1. `POST /auth/parent/activate` with `{email, invite_token, password}` — sets their password, returns a JWT.
 2. `POST /auth/parent/login` with `{email, password}` for subsequent logins.
@@ -188,14 +188,14 @@ This needs `max_prepared_transactions > 0` on the Postgres server (0 — disable
 
 Sends an email to a student's guardians if they haven't been dropped off by the school's cutoff time (or dropped off but not picked up by end of day), unless a matching `ExpectedAbsence` covers today. See ARCHITECTURE.md §7 for the design.
 
-**Local dev (no email provider needed):** leave `SMTP_HOST` unset in `.env` — emails are logged instead of sent, so you can see exactly what would have gone out:
+**Local dev (no email provider needed):** leave `POSTMARK_SERVER_TOKEN` unset in `.env` — emails are logged instead of sent, so you can see exactly what would have gone out:
 
 ```bash
 cd backend
 python -m app.jobs.welfare_check
 ```
 
-**Run it for real:** set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL` in `.env` to your provider's SMTP credentials (SendGrid, SES, Postmark, etc. all support plain SMTP).
+**Run it for real:** set `POSTMARK_SERVER_TOKEN` and `EMAIL_FROM_ADDRESS` in `.env` to your Postmark account's Server API token and a verified sender address/domain.
 
 **Scheduling:** the job is meant to be triggered externally and re-run often — cutoff-time gating and its idempotency log make repeated runs safe. Every 15 minutes is reasonable.
 

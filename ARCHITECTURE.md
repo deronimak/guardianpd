@@ -98,7 +98,7 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 4. A second pass runs near end-of-day for pickup: any student with a `drop_off` today but no `pick_up` by the school's cutoff → same treatment (this one's arguably more urgent — the child is confirmed on-site with no confirmed release).
 5. Log every alert sent (`Notification` row) so it's auditable and doesn't double-send if the job retries.
 
-**Delivery**: transactional email provider (SendGrid, Postgres, or AWS SES) — not the same channel as the push notifications in §5, since welfare alerts need to reach a parent even if they haven't opened the app in weeks and push has gone stale. Implemented over plain SMTP (`app/core/email.py`) so any of those providers works without a vendor SDK; logs instead of sending when no SMTP host is configured, so the job runs end-to-end in local dev.
+**Delivery**: transactional email provider (Postmark) — not the same channel as the push notifications in §5, since welfare alerts need to reach a parent even if they haven't opened the app in weeks and push has gone stale. Implemented over Postmark's HTTP API (`app/core/email.py`), not SMTP — most PaaS hosts (Railway included) silently firewall outbound SMTP ports, which surfaced in production as every send timing out; a plain HTTPS API call has no such problem. Logs instead of sending when no Postmark server token is configured, so the job runs end-to-end in local dev.
 
 **Sensitivity note**: this feature directly touches child safety. False negatives (a genuine no-show that doesn't alert) and false positives (routine alerts training parents to ignore them) are both real failure modes worth testing deliberately — this is not a "ship it and see" feature.
 
@@ -116,7 +116,7 @@ Why split it this way: a parent logs in once (Platform DB identity), and the app
 4. Once active, the parent's single login surfaces every child linked to them, across every enrolled school (via `GuardianMembership`), each school still producing its own separate printed QR (QR is per guardian *per school*, since scanning always happens against one school's tenant DB).
 5. Parent can request additional children be linked — school staff approves, since that's a trust decision the school should own, not the app.
 
-**Implementation status**: steps 1–4 are built. Guardian creation (`POST /guardians`) emails an invite code (logged instead of sent without SMTP configured, same as the welfare job); `POST /auth/parent/activate` and `POST /auth/parent/login` handle the account, and `GET /parent/me/children` does the cross-school aggregation. Beyond the list above, a parent can also view their child's attendance history and mark planned absences themselves (`GET`/`POST /parent/me/schools/{slug}/students/{id}/...`) — reached by tapping a child in the app. Step 5 (parent-requested links) isn't built — links are still staff-created only.
+**Implementation status**: steps 1–4 are built. Guardian creation (`POST /guardians`) emails an invite code (logged instead of sent without Postmark configured, same as the welfare job); `POST /auth/parent/activate` and `POST /auth/parent/login` handle the account, and `GET /parent/me/children` does the cross-school aggregation. Beyond the list above, a parent can also view their child's attendance history and mark planned absences themselves (`GET`/`POST /parent/me/schools/{slug}/students/{id}/...`) — reached by tapping a child in the app. Step 5 (parent-requested links) isn't built — links are still staff-created only.
 
 ## 9. Backend architecture
 

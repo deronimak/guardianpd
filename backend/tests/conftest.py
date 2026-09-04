@@ -32,7 +32,7 @@ os.environ["QR_SIGNING_KEY"] = "test-only-qr-signing-key"
 # app/api/routes/billing.py), never a real external API call.
 os.environ["PAYSTACK_SECRET_KEY"] = ""
 os.environ["FIREBASE_CREDENTIALS_JSON"] = ""
-os.environ["SMTP_HOST"] = ""
+os.environ["POSTMARK_SERVER_TOKEN"] = ""
 
 import pytest
 from fastapi.testclient import TestClient
