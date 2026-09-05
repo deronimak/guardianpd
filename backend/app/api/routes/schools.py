@@ -10,9 +10,11 @@ import datetime as dt
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_platform_staff
+from app.core.audit import record_audit, resolve_platform_actor_label
 from app.core.email import send_email
 from app.core.security import hash_password
 from app.db.platform import SessionLocal, get_platform_db
@@ -21,14 +23,18 @@ from app.db.twophase import get_twophase_session
 from app.models.platform import Invoice, School, Subscription
 from app.models.tenant import (
     AttendanceEvent,
+    AuditLogEntry,
     ExpectedAbsence,
+    Guardian,
     GuardianStudentLink,
     Notification,
+    QRCredential,
     StaffUser,
     Student,
     TenantBase,
     WelfareAlertLog,
 )
+from app.schemas.audit import AuditLogEntryOut
 from app.schemas.school import (
     SchoolDetailOut,
     SchoolEnrollRequest,
@@ -56,21 +62,30 @@ def list_schools(
     include_archived: bool = False,
     platform_db: Session = Depends(get_platform_db),
 ) -> list[dict]:
-    """Powers the Master Admin dashboard — search by either the auto-generated
-    "GPD-XXXXXX" school ID (matched against the numeric sequence_no) or a
-    substring of the school name. Archived schools are hidden unless
-    `include_archived=true` (used by the console's "show archived" toggle,
-    since an archived school can still be found and unarchived here).
+    """Powers the Master Admin dashboard — search by the auto-generated
+    "GPD-XXXXXX" school ID (matched against the numeric sequence_no), or a
+    substring of the school name, phone number, or billing email. Archived
+    schools are hidden unless `include_archived=true` (used by the
+    console's "show archived" toggle, since an archived school can still
+    be found and unarchived here).
     """
     q = platform_db.query(School)
     if not include_archived:
         q = q.filter(School.archived_at.is_(None))
     if query:
         stripped = query.strip().upper().removeprefix("GPD-").lstrip("0")
-        if stripped.isdigit():
+        # A bare numeric query only means "sequence number" when it's short
+        # enough to plausibly be one (the format is 6 digits, zero-padded) —
+        # otherwise a phone number typed without its "+"/formatting (e.g.
+        # "2348099999999") would incorrectly match here instead of falling
+        # through to the phone/email/name search below.
+        if stripped.isdigit() and len(stripped) <= 6:
             q = q.filter(School.sequence_no == int(stripped))
         else:
-            q = q.filter(School.name.ilike(f"%{query}%"))
+            like = f"%{query}%"
+            q = q.filter(
+                School.name.ilike(like) | School.phone.ilike(like) | School.billing_email.ilike(like)
+            )
 
     schools = q.order_by(School.created_at.desc()).all()
     result = []
@@ -85,6 +100,7 @@ def list_schools(
                 "status": school.status,
                 "timezone": school.timezone,
                 "billing_email": school.billing_email,
+                "phone": school.phone,
                 "created_at": school.created_at,
                 "subscription_status": subscription.status if subscription else "none",
                 "archived_at": school.archived_at,
@@ -118,6 +134,8 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
     tenant_db = get_tenant_sessionmaker(school.tenant_db_name)()
     try:
         child_count = tenant_db.query(Student).count()
+        guardian_count = tenant_db.query(Guardian).count()
+        qr_printed_count = tenant_db.query(func.coalesce(func.sum(QRCredential.print_count), 0)).scalar() or 0
     finally:
         tenant_db.close()
 
@@ -131,10 +149,13 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
         "timezone": school.timezone,
         "billing_email": school.billing_email,
         "subscription_status": subscription.status if subscription else "none",
+        "price_per_child_naira": subscription.price_per_child_naira if subscription else 500,
         "started_at": subscription.started_at if subscription else school.created_at,
         "current_period_start": current_period_start,
         "current_period_end": current_period_end,
         "child_count": child_count,
+        "guardian_count": guardian_count,
+        "qr_printed_count": qr_printed_count,
         "archived_at": school.archived_at,
     }
 
@@ -212,6 +233,7 @@ def update_school_student(
     school_id: uuid.UUID,
     student_id: uuid.UUID,
     payload: StudentUpdateRequest,
+    claims: dict = Depends(require_platform_staff),
     platform_db: Session = Depends(get_platform_db),
 ) -> Student:
     school = _get_school_or_404(school_id, platform_db)
@@ -220,8 +242,17 @@ def update_school_student(
         student = tenant_db.get(Student, student_id)
         if student is None:
             raise HTTPException(status_code=404, detail="Unknown student at this school")
+        updated_fields = list(payload.model_dump(exclude_unset=True).keys())
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(student, field, value)
+        record_audit(
+            tenant_db,
+            "student",
+            student.id,
+            "updated",
+            f"Updated student {student.name} ({', '.join(updated_fields)})",
+            resolve_platform_actor_label(platform_db, claims),
+        )
         tenant_db.commit()
         tenant_db.refresh(student)
         return student
@@ -233,6 +264,7 @@ def update_school_student(
 def delete_school_student(
     school_id: uuid.UUID,
     student_id: uuid.UUID,
+    claims: dict = Depends(require_platform_staff),
     platform_db: Session = Depends(get_platform_db),
 ) -> Response:
     """Hard delete — a single child is low enough blast radius to just
@@ -248,6 +280,7 @@ def delete_school_student(
         student = tenant_db.get(Student, student_id)
         if student is None:
             raise HTTPException(status_code=404, detail="Unknown student at this school")
+        student_name = student.name
 
         event_ids = [
             row.id for row in tenant_db.query(AttendanceEvent.id).filter_by(student_id=student_id).all()
@@ -261,10 +294,42 @@ def delete_school_student(
         tenant_db.query(WelfareAlertLog).filter_by(student_id=student_id).delete(synchronize_session=False)
         tenant_db.query(GuardianStudentLink).filter_by(student_id=student_id).delete(synchronize_session=False)
         tenant_db.delete(student)
+        record_audit(
+            tenant_db,
+            "student",
+            student_id,
+            "deleted",
+            f"Deleted student {student_name}",
+            resolve_platform_actor_label(platform_db, claims),
+        )
         tenant_db.commit()
     finally:
         tenant_db.close()
     return Response(status_code=204)
+
+
+@router.get("/{school_id}/audit-log", response_model=list[AuditLogEntryOut])
+def get_school_audit_log(
+    school_id: uuid.UUID,
+    limit: int = 50,
+    offset: int = 0,
+    platform_db: Session = Depends(get_platform_db),
+) -> list[AuditLogEntry]:
+    """Master Admin's per-school Activity log — guardian/student
+    add/edit/delete/link events (app/core/audit.py), newest first.
+    """
+    school = _get_school_or_404(school_id, platform_db)
+    tenant_db = _tenant_session_for(school)
+    try:
+        return (
+            tenant_db.query(AuditLogEntry)
+            .order_by(AuditLogEntry.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+    finally:
+        tenant_db.close()
 
 
 @router.post("", response_model=SchoolOut, status_code=201)

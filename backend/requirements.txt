@@ -13,6 +13,7 @@ qrcode[pil]>=7.4
 reportlab>=4.2
 httpx>=0.27
 firebase-admin>=6.5
+apscheduler>=3.10
 # zoneinfo (stdlib) needs an IANA tz database — Windows has no OS-level
 # one, so this ships it. Harmless no-op on Linux/macOS, which use the
 # system's copy instead.

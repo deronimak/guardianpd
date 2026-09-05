@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_staff, get_school, get_tenant_db, require_school_admin
+from app.core.audit import record_audit, resolve_staff_actor_label
 from app.core.email import send_email
 from app.core.qr_pdf import generate_qr_credential_pdf
 from app.core.security import generate_qr_token, verify_qr_token
@@ -51,6 +52,7 @@ def _activation_email(school_name: str, email: str, invite_token: str) -> None:
 def create_guardian(
     payload: GuardianCreateRequest,
     school: School = Depends(get_school),
+    claims: dict = Depends(get_current_staff),
 ) -> dict:
     """School-Admin-initiated combined enrollment (GuardianPD spec): creates
     the guardian, their printed QR credential, and up to 10 named children
@@ -115,6 +117,11 @@ def create_guardian(
             db.add(GuardianStudentLink(guardian_id=guardian.id, student_id=student.id))
             children_out.append({"id": student.id, "name": student.name, "grade": None})
 
+        summary = f"Added guardian {guardian.name}"
+        if children_out:
+            summary += f" with {len(children_out)} child(ren): " + ", ".join(c["name"] for c in children_out)
+        record_audit(db, "guardian", guardian.id, "created", summary, resolve_staff_actor_label(db, claims))
+
         db.commit()
     except Exception:
         db.rollback()
@@ -173,6 +180,7 @@ def update_guardian(
     payload: GuardianUpdateRequest,
     tenant_db: Session = Depends(get_tenant_db),
     platform_db: Session = Depends(get_platform_db),
+    claims: dict = Depends(get_current_staff),
 ) -> dict:
     """Edits a guardian's own record. Editing email also updates their
     shared PlatformUser login (Guardian.email is a denormalized copy of it
@@ -197,6 +205,15 @@ def update_guardian(
 
     for field, value in updates.items():
         setattr(guardian, field, value)
+    if updates:
+        record_audit(
+            tenant_db,
+            "guardian",
+            guardian.id,
+            "updated",
+            f"Updated guardian {guardian.name} ({', '.join(updates.keys())})",
+            resolve_staff_actor_label(tenant_db, claims),
+        )
     tenant_db.commit()
     tenant_db.refresh(guardian)
 
@@ -214,6 +231,7 @@ def update_guardian(
 def delete_guardian(
     guardian_id: uuid.UUID,
     school: School = Depends(get_school),
+    claims: dict = Depends(get_current_staff),
 ) -> Response:
     """Hard delete, same philosophy as the Master Admin's student delete
     (app/api/routes/schools.py) — a single guardian is low enough blast
@@ -229,6 +247,7 @@ def delete_guardian(
         guardian = db.get(Guardian, guardian_id)
         if guardian is None:
             raise HTTPException(status_code=404, detail="Unknown guardian")
+        guardian_name = guardian.name
 
         event_ids = [row.id for row in db.query(AttendanceEvent.id).filter_by(guardian_id=guardian_id).all()]
         if event_ids:
@@ -243,6 +262,9 @@ def delete_guardian(
         )
 
         db.delete(guardian)
+        record_audit(
+            db, "guardian", guardian_id, "deleted", f"Deleted guardian {guardian_name}", resolve_staff_actor_label(db, claims)
+        )
         db.commit()
     except Exception:
         db.rollback()
@@ -361,6 +383,13 @@ def download_qr_credential_pdf(
         qr_token=credential.token,
         children_names=children_names,
     )
+
+    # Closest real signal to "printed" available — the PDF itself isn't
+    # stored, so a download is what actually precedes printing it.
+    credential.print_count += 1
+    credential.last_printed_at = datetime.now(timezone.utc)
+    tenant_db.commit()
+
     filename = f"{guardian.name.replace(' ', '_')}-qr-credential.pdf"
     return Response(
         content=pdf_bytes,

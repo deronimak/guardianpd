@@ -51,11 +51,15 @@ def require_active_subscription(
     platform_db: Session = Depends(get_platform_db),
 ) -> School:
     """ARCHITECTURE.md §4: a suspended subscription blocks QR issuance AND
-    scanning. Suspension is a manual Master Admin action (Manage
-    Subscription page) — see app/api/routes/billing.py.
+    scanning. Trial schools keep full access — a trial exists precisely so
+    a school can use the product before paying, and the invoice job never
+    bills a non-"active" subscription anyway (app/jobs/generate_invoices.py)
+    — so only "suspended" blocks anything here. Suspension is a manual
+    Master Admin action (Manage Subscription page) — see
+    app/api/routes/billing.py.
     """
     subscription = platform_db.query(Subscription).filter_by(school_id=school.id).first()
-    if subscription is None or subscription.status != "active":
+    if subscription is None or subscription.status not in ("active", "trial"):
         raise HTTPException(
             status_code=402,
             detail="This school's subscription is inactive. QR scanning and issuance are disabled until it's resolved.",

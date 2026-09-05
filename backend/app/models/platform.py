@@ -52,9 +52,9 @@ class School(PlatformBase):
 
 
 class Subscription(PlatformBase):
-    """Manual active/suspended state, controlled from the Master Admin's
-    Manage Subscription page (ARCHITECTURE.md §4) — reactivation is a
-    deliberate admin action, not something a Paystack webhook flips
+    """Manual active/trial/suspended state, controlled from the Master
+    Admin's Manage Subscription page (ARCHITECTURE.md §4) — reactivation is
+    a deliberate admin action, not something a Paystack webhook flips
     automatically, so paying an invoice does not by itself unsuspend a
     school (see app/api/routes/billing.py).
     """
@@ -63,10 +63,18 @@ class Subscription(PlatformBase):
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("schools.id"), unique=True)
-    # active / suspended — see ARCHITECTURE.md §4 for what each gates.
+    # active / trial / suspended — see ARCHITECTURE.md §4 for what each
+    # gates. Trial keeps full scanning/issuance access (app/api/deps.py's
+    # require_active_subscription) but is never auto-invoiced
+    # (app/jobs/generate_invoices.py only bills status == "active").
     status: Mapped[str] = mapped_column(String(20), default="active")
     # Billing anchor date: invoice periods are started_at + N*30 days.
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Per-school override of the flat 500 NGN/child rate (Master Admin can
+    # adjust this up/down in 500 NGN increments) — read by
+    # app/jobs/generate_invoices.py and the manual-invoice endpoint instead
+    # of a hardcoded constant.
+    price_per_child_naira: Mapped[int] = mapped_column(Integer, default=500)
 
 
 class Invoice(PlatformBase):
@@ -85,7 +93,7 @@ class Invoice(PlatformBase):
     period_end: Mapped[date] = mapped_column(Date)
     child_count: Mapped[int] = mapped_column(Integer)
     amount_naira: Mapped[int] = mapped_column(Integer)
-    # pending / paid / overdue
+    # pending / paid / overdue / cancelled
     status: Mapped[str] = mapped_column(String(20), default="pending")
     due_date: Mapped[date] = mapped_column(Date)
     paystack_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)

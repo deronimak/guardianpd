@@ -12,6 +12,7 @@ sent, so the welfare job can be exercised end-to-end in local dev without a
 real provider.
 """
 
+import base64
 import logging
 
 import httpx
@@ -23,10 +24,33 @@ logger = logging.getLogger(__name__)
 _POSTMARK_API_URL = "https://api.postmarkapp.com/email"
 
 
-def send_email(to_email: str, subject: str, body: str) -> None:
+def send_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    attachments: list[tuple[str, bytes, str]] | None = None,
+) -> None:
+    """`attachments` is a list of (filename, content, content_type) — e.g.
+    ("GPD-000123-202609.pdf", pdf_bytes, "application/pdf"), used by
+    app/core/invoicing.py to attach a PDF invoice.
+    """
     if not settings.postmark_server_token:
-        logger.info("EMAIL (dev, not sent) to=%s subject=%r\n%s", to_email, subject, body)
+        names = [name for name, _, _ in attachments or []]
+        logger.info("EMAIL (dev, not sent) to=%s subject=%r attachments=%s\n%s", to_email, subject, names, body)
         return
+
+    payload = {
+        "From": settings.email_from_address,
+        "To": to_email,
+        "Subject": subject,
+        "TextBody": body,
+        "MessageStream": "outbound",
+    }
+    if attachments:
+        payload["Attachments"] = [
+            {"Name": name, "Content": base64.b64encode(content).decode("ascii"), "ContentType": content_type}
+            for name, content, content_type in attachments
+        ]
 
     response = httpx.post(
         _POSTMARK_API_URL,
@@ -35,13 +59,7 @@ def send_email(to_email: str, subject: str, body: str) -> None:
             "Content-Type": "application/json",
             "X-Postmark-Server-Token": settings.postmark_server_token,
         },
-        json={
-            "From": settings.email_from_address,
-            "To": to_email,
-            "Subject": subject,
-            "TextBody": body,
-            "MessageStream": "outbound",
-        },
+        json=payload,
         timeout=10,
     )
     if response.status_code != 200:

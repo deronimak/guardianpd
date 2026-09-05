@@ -26,7 +26,11 @@ _VALID_DB_NAME = re.compile(r"^[a-z][a-z0-9_]{2,62}$")
 _engine_cache: dict[str, Engine] = {}
 
 
-def _tenant_url(tenant_db_name: str) -> str:
+def tenant_url(tenant_db_name: str) -> str:
+    """Public so app/jobs/migrate.py can point TENANT_DATABASE_URL at each
+    school's database in turn without duplicating this connection-string
+    logic.
+    """
     return (
         f"postgresql+psycopg2://{settings.postgres_user}:{settings.postgres_password}"
         f"@{settings.postgres_host}:{settings.postgres_port}/{tenant_db_name}"
@@ -35,7 +39,7 @@ def _tenant_url(tenant_db_name: str) -> str:
 
 def get_tenant_engine(tenant_db_name: str) -> Engine:
     if tenant_db_name not in _engine_cache:
-        _engine_cache[tenant_db_name] = create_engine(_tenant_url(tenant_db_name), pool_pre_ping=True)
+        _engine_cache[tenant_db_name] = create_engine(tenant_url(tenant_db_name), pool_pre_ping=True)
     return _engine_cache[tenant_db_name]
 
 

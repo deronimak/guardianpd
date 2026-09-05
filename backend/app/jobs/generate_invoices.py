@@ -1,11 +1,14 @@
 """Per-child metered billing invoice generation (GuardianPD spec).
 
-500 NGN per enrolled child, billed every 30 days. Meant to be invoked
-periodically by an external scheduler (cron, Windows Task Scheduler, etc.
-— see app/jobs/welfare_check.py for the same pattern), not run as an
-in-process scheduler. Safe to run more than once a day: Invoice's unique
-constraint on (school_id, period_start) makes generation idempotent, and
-the overdue-marking pass just flips status on existing rows.
+500 NGN per enrolled child by default (Master Admin can override this per
+school via PATCH /platform/schools/{id}/subscription — see
+Subscription.price_per_child_naira, app/models/platform.py), billed every
+30 days. Meant to be invoked periodically by an external scheduler (cron,
+Windows Task Scheduler, etc. — see app/jobs/welfare_check.py for the same
+pattern) or the in-process scheduler (app/core/scheduler.py). Safe to run
+more than once a day: Invoice's unique constraint on (school_id,
+period_start) makes generation idempotent, and the overdue-marking pass
+just flips status on existing rows.
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.core.email import send_email
+from app.core.invoicing import send_invoice_created_email
 from app.db.platform import SessionLocal as PlatformSessionLocal
 from app.db.tenant import get_tenant_sessionmaker
 from app.models.platform import Invoice, School, Subscription
@@ -23,12 +26,16 @@ from app.models.tenant import Student
 
 logger = logging.getLogger(__name__)
 
-PRICE_PER_CHILD_NAIRA = 500
 BILLING_PERIOD_DAYS = 30
 OVERDUE_GRACE_DAYS = 7
 
 
-def _next_period_start(platform_db: Session, school: School, subscription: Subscription) -> dt.date:
+def next_period_start(platform_db: Session, school: School, subscription: Subscription) -> dt.date:
+    """Also used by the manual "create invoice now" endpoint
+    (app/api/routes/billing.py) so a manually-triggered invoice lands on
+    the exact same period the periodic job would have generated next,
+    rather than diverging from this job's own idempotency bookkeeping.
+    """
     latest = (
         platform_db.query(Invoice)
         .filter_by(school_id=school.id)
@@ -55,7 +62,7 @@ def generate_invoices_for_all_schools(now: dt.datetime | None = None) -> int:
         )
         for school in schools:
             subscription = platform_db.query(Subscription).filter_by(school_id=school.id).first()
-            period_start = _next_period_start(platform_db, school, subscription)
+            period_start = next_period_start(platform_db, school, subscription)
             period_end = period_start + dt.timedelta(days=BILLING_PERIOD_DAYS)
             if today < period_end:
                 continue  # this billing cycle hasn't finished yet
@@ -74,7 +81,7 @@ def generate_invoices_for_all_schools(now: dt.datetime | None = None) -> int:
             finally:
                 tenant_db.close()
 
-            amount = child_count * PRICE_PER_CHILD_NAIRA
+            amount = child_count * subscription.price_per_child_naira
             invoice = Invoice(
                 school_id=school.id,
                 period_start=period_start,
@@ -86,20 +93,10 @@ def generate_invoices_for_all_schools(now: dt.datetime | None = None) -> int:
             )
             platform_db.add(invoice)
             platform_db.commit()
+            platform_db.refresh(invoice)
             created += 1
 
-            if school.billing_email:
-                send_email(
-                    to_email=school.billing_email,
-                    subject=f"Invoice for {school.name} — {amount} NGN due",
-                    body=(
-                        f"{school.name} had {child_count} enrolled child(ren) for the billing "
-                        f"period {period_start} to {period_end}.\n\n"
-                        f"Amount due: {amount} NGN (500 NGN per child).\n"
-                        f"Due date: {period_end}.\n\n"
-                        "Log in to the GuardianPD Master Admin console to pay via Paystack."
-                    ),
-                )
+            send_invoice_created_email(invoice, school, subscription)
             logger.info("%s: generated invoice for %d child(ren) (%d NGN)", school.slug, child_count, amount)
     finally:
         platform_db.close()

@@ -49,6 +49,7 @@ class SchoolWithSubscriptionOut(BaseModel):
     status: str
     timezone: str
     billing_email: str | None
+    phone: str | None = None
     created_at: datetime
     subscription_status: str
     archived_at: datetime | None = None
@@ -71,10 +72,13 @@ class SchoolDetailOut(BaseModel):
     timezone: str
     billing_email: str | None
     subscription_status: str
+    price_per_child_naira: int
     started_at: datetime
     current_period_start: date
     current_period_end: date
     child_count: int
+    guardian_count: int
+    qr_printed_count: int
     archived_at: datetime | None = None
 
 

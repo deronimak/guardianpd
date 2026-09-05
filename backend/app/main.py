@@ -3,7 +3,10 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+from app.core.scheduler import start_scheduler, stop_scheduler
 
 from app.api.routes import (
     absences,
@@ -54,11 +57,43 @@ app.include_router(absences.router)
 app.include_router(attendance.router)
 app.include_router(welfare.router)
 
-# Platform ops console (ARCHITECTURE.md §10) — a plain static page, not
-# part of the Flutter app, served same-origin so it needs no CORS config.
-# Logs in against POST /auth/platform/login like any other client.
-_STATIC_ADMIN_DIR = os.path.join(os.path.dirname(__file__), "static", "admin")
-app.mount("/admin", StaticFiles(directory=_STATIC_ADMIN_DIR, html=True), name="admin")
+
+@app.on_event("startup")
+def _on_startup() -> None:
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def _on_shutdown() -> None:
+    stop_scheduler()
+
+
+# Platform ops console (ARCHITECTURE.md §10) — the "GuardianPD" React/Vite
+# admin dashboard (admin-dashboard/), built with `npm run build` (base:
+# "/admin/") and its output copied/pointed here. Served same-origin so it
+# needs no CORS config; logs in against POST /auth/platform/login like any
+# other client.
+_STATIC_ADMIN_DIR = os.path.join(os.path.dirname(__file__), "static", "admin_dist")
+app.mount("/admin/assets", StaticFiles(directory=os.path.join(_STATIC_ADMIN_DIR, "assets")), name="admin_assets")
+
+
+@app.get("/admin")
+@app.get("/admin/{full_path:path}")
+def admin_spa(full_path: str = "") -> FileResponse:
+    """Serves the built dashboard. Vite's `public/` passthrough files
+    (favicon.svg, icons.svg, etc.) land at the root of the build output
+    alongside index.html, not under /admin/assets, so a path that matches
+    one of those real files on disk is served directly; anything else
+    (e.g. /admin/schools/<id>, a client-side route) falls back to
+    index.html for react-router to take over — StaticFiles(html=True)
+    alone only serves index.html for the mount root, not arbitrary
+    sub-paths.
+    """
+    if full_path:
+        candidate = os.path.normpath(os.path.join(_STATIC_ADMIN_DIR, full_path))
+        if candidate.startswith(_STATIC_ADMIN_DIR) and os.path.isfile(candidate):
+            return FileResponse(candidate)
+    return FileResponse(os.path.join(_STATIC_ADMIN_DIR, "index.html"))
 
 # School Admin web console — same idea as /admin above but for one school's
 # own admin (POST /auth/staff/login + role="admin"), scoped to the one

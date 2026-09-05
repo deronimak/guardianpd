@@ -8,7 +8,7 @@ boundary (ARCHITECTURE.md §2).
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -73,6 +73,11 @@ class QRCredential(TenantBase):
     token: Mapped[str] = mapped_column(String(500), unique=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Incremented each time GET /guardians/{id}/qr-credential.pdf is
+    # downloaded (app/api/routes/guardians.py) — the closest real signal to
+    # "printed" available, since the PDF itself isn't stored anywhere.
+    print_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AttendanceEvent(TenantBase):
@@ -152,4 +157,24 @@ class GuardianDeviceToken(TenantBase):
     guardian_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("guardians.id"))
     token: Mapped[str] = mapped_column(String(500))
     platform: Mapped[str] = mapped_column(String(20))  # ios / android
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AuditLogEntry(TenantBase):
+    """Master Admin's per-school Activity log (app/core/audit.py writes
+    these) — a human-readable history of guardian/student add/edit/delete/
+    link events. Not a compliance-grade field-level diff log, just enough
+    to answer "who changed what, roughly, and when" for one school.
+    """
+
+    __tablename__ = "audit_log_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entity_type: Mapped[str] = mapped_column(String(20))  # guardian / student
+    # No FK — the entity may have been deleted by the time this is read,
+    # same "unenforced cross-reference" pattern as Guardian.platform_user_id.
+    entity_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True))
+    action: Mapped[str] = mapped_column(String(20))  # created / updated / deleted / linked
+    summary: Mapped[str] = mapped_column(String(500))
+    actor_label: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
