@@ -61,6 +61,29 @@ def test_resend_activation_for_unactivated_guardian(client, school_admin_headers
     assert resp.json()["status"] == "sent"
 
 
+def test_create_guardian_succeeds_even_if_activation_email_fails(client, school_admin_headers, monkeypatch):
+    """Regression test: production once returned a 500 here whenever
+    Postmark hiccuped, even though the guardian/children had already been
+    committed — see app/api/routes/guardians.py's _activation_email. The
+    enrollment must still be reported as a success to the caller.
+    """
+    import app.api.routes.guardians as guardians_module
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("Postmark is down")
+
+    monkeypatch.setattr(guardians_module, "send_email", _boom)
+
+    resp = client.post("/guardians", json=_guardian_payload(), headers=school_admin_headers)
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert len(body["children"]) == 2
+
+    # And the guardian really was persisted, not just "returned" without a commit.
+    search_resp = client.get("/guardians", params={"query": "Gina"}, headers=school_admin_headers)
+    assert "Gina Guardian" in [g["name"] for g in search_resp.json()]
+
+
 def test_guardian_creation_requires_authentication(client, enrolled_school):
     resp = client.post(
         "/guardians",

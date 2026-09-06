@@ -49,20 +49,27 @@ def send_invoice_created_email(invoice: Invoice, school: School, subscription: S
         checkout_url=checkout_url,
     )
 
-    send_email(
-        to_email=school.billing_email,
-        subject=f"GuardianPD invoice {number} — {invoice.amount_naira:,} NGN due {invoice.due_date:%b %d, %Y}",
-        body=(
-            f"Hi,\n\n"
-            f"Attached is invoice {number} for {school.name}: {invoice.child_count} enrolled "
-            f"child(ren) for the billing period {invoice.period_start:%b %d, %Y} to "
-            f"{invoice.period_end:%b %d, %Y}.\n\n"
-            f"Amount due: {invoice.amount_naira:,} NGN ({subscription.price_per_child_naira:,} NGN per child).\n"
-            f"Due date: {invoice.due_date:%b %d, %Y}.\n\n"
-            + (f"Pay now: {checkout_url}\n\n" if checkout_url else "")
-            + "The invoice PDF is attached to this email.\n\n"
-            "— GuardianPD"
-        ),
-        attachments=[(f"{number}.pdf", pdf_bytes, "application/pdf")],
-    )
+    try:
+        send_email(
+            to_email=school.billing_email,
+            subject=f"GuardianPD invoice {number} — {invoice.amount_naira:,} NGN due {invoice.due_date:%b %d, %Y}",
+            body=(
+                f"Hi,\n\n"
+                f"Attached is invoice {number} for {school.name}: {invoice.child_count} enrolled "
+                f"child(ren) for the billing period {invoice.period_start:%b %d, %Y} to "
+                f"{invoice.period_end:%b %d, %Y}.\n\n"
+                f"Amount due: {invoice.amount_naira:,} NGN ({subscription.price_per_child_naira:,} NGN per child).\n"
+                f"Due date: {invoice.due_date:%b %d, %Y}.\n\n"
+                + (f"Pay now: {checkout_url}\n\n" if checkout_url else "")
+                + "The invoice PDF is attached to this email.\n\n"
+                "— GuardianPD"
+            ),
+            attachments=[(f"{number}.pdf", pdf_bytes, "application/pdf")],
+        )
+    except Exception:
+        # The invoice itself is already committed by the caller — an email
+        # outage shouldn't turn a successful invoice into a 500, and (for
+        # the periodic job) shouldn't abort every other school still left
+        # to process in the same run.
+        logger.exception("could not email invoice %s to %s", invoice.id, school.billing_email)
     return checkout_url

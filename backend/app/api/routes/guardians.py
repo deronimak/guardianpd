@@ -1,3 +1,4 @@
+import logging
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -31,21 +32,32 @@ from app.schemas.guardian import (
 
 router = APIRouter(prefix="/guardians", tags=["guardians"], dependencies=[Depends(get_current_staff)])
 
+logger = logging.getLogger(__name__)
+
 _INVITE_TOKEN_VALIDITY = timedelta(days=7)
 
 
 def _activation_email(school_name: str, email: str, invite_token: str) -> None:
-    send_email(
-        to_email=email,
-        subject=f"Activate your {school_name} attendance account",
-        body=(
-            f"{school_name} has added you as a guardian in the attendance app.\n\n"
-            f"To activate your account, open the app and enter:\n"
-            f"  Email: {email}\n"
-            f"  Activation code: {invite_token}\n\n"
-            "This code expires in 7 days."
-        ),
-    )
+    """Best-effort — the guardian/invite record this follows is already
+    committed by the time this runs, so an email outage (Postmark down,
+    rate limited, etc.) must not turn an already-successful enrollment or
+    token refresh into a client-visible 500. The school admin can always
+    use "resend activation" once mail is flowing again.
+    """
+    try:
+        send_email(
+            to_email=email,
+            subject=f"Activate your {school_name} attendance account",
+            body=(
+                f"{school_name} has added you as a guardian in the attendance app.\n\n"
+                f"To activate your account, open the app and enter:\n"
+                f"  Email: {email}\n"
+                f"  Activation code: {invite_token}\n\n"
+                "This code expires in 7 days."
+            ),
+        )
+    except Exception:
+        logger.exception("could not send activation email to %s", email)
 
 
 @router.post("", response_model=GuardianOut, status_code=201, dependencies=[Depends(require_school_admin)])

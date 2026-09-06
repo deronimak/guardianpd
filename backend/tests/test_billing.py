@@ -7,9 +7,22 @@ verification, rather than exercising real Paystack calls.
 import uuid
 
 
-def test_checkout_session_returns_501_without_paystack_configured(client, platform_auth_headers):
+def test_checkout_session_returns_404_for_unknown_invoice(client, platform_auth_headers):
     resp = client.post(
         f"/platform/invoices/{uuid.uuid4()}/checkout-session",
+        headers=platform_auth_headers,
+    )
+    assert resp.status_code == 404
+
+
+def test_checkout_session_returns_501_without_paystack_configured(client, platform_auth_headers, enrolled_school):
+    school_id = enrolled_school["school"]["id"]
+    invoice_resp = client.post(f"/platform/schools/{school_id}/invoices", headers=platform_auth_headers)
+    assert invoice_resp.status_code == 200, invoice_resp.text
+    invoice_id = invoice_resp.json()["id"]
+
+    resp = client.post(
+        f"/platform/invoices/{invoice_id}/checkout-session",
         headers=platform_auth_headers,
     )
     assert resp.status_code == 501
