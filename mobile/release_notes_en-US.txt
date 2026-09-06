@@ -1,0 +1,9 @@
+Initial release for closed testing.
+
+GuardianPD helps schools manage pickup and drop-off safely using secure QR codes.
+
+This build includes:
+- Guardian and student enrollment
+- QR code scanning for attendance at drop-off and pick-up
+- Automatic notifications to guardians
+- Parent account activation

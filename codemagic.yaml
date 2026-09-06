@@ -1,0 +1,40 @@
+workflows:
+  android-alpha:
+    name: GuardianPD - Android Closed Testing (Alpha)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    working_directory: mobile
+    environment:
+      flutter: stable
+      groups:
+        # Create these two groups under Codemagic > Team settings >
+        # Environment variables (or per-app settings) — see the setup
+        # notes below for exactly which variables each one holds.
+        - android_signing
+        - google_play
+    scripts:
+      - name: Write Android release-signing config
+        script: |
+          # Recreates android/app/upload-keystore.jks + android/key.properties
+          # on the build machine - both are gitignored in this repo (see
+          # android/.gitignore), so CI has to reconstruct them from secret
+          # environment variables rather than reading them from the checkout.
+          echo "$CM_KEYSTORE" | base64 --decode > "$CM_BUILD_DIR/mobile/android/app/upload-keystore.jks"
+          cat > "$CM_BUILD_DIR/mobile/android/key.properties" <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_BUILD_DIR/mobile/android/app/upload-keystore.jks
+          EOF
+      - name: Get Flutter packages
+        script: flutter packages pub get
+      - name: Build release AAB
+        script: flutter build appbundle --release
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/**/mapping.txt
+    publishing:
+      google_play:
+        credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
+        track: alpha
+        submit_as_draft: false
