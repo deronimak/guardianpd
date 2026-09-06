@@ -10,23 +10,44 @@ from app.schemas.parent_auth import ParentActivateRequest, ParentLoginRequest, P
 
 router = APIRouter(prefix="/auth/parent", tags=["parent-auth"])
 
+# The activation code is only 7 digits (10M possibilities) — far weaker
+# than the long random token it replaced — so unlike a simple equality
+# check, wrong guesses need to run out the code rather than staying valid
+# indefinitely. Ask the school for "resend activation" to get a fresh one.
+_MAX_INVITE_TOKEN_ATTEMPTS = 5
+
 
 @router.post("/activate", response_model=ParentTokenResponse)
 def activate(payload: ParentActivateRequest, platform_db: Session = Depends(get_platform_db)) -> dict:
-    """Consumes the invite token emailed when a school first added this
+    """Consumes the invite code emailed when a school first added this
     guardian (see app/api/routes/guardians.py) and sets their password.
     """
     user = platform_db.query(PlatformUser).filter_by(email=payload.email).first()
-    if user is None or not user.invite_token or user.invite_token != payload.invite_token:
+    if user is None or not user.invite_token:
         raise HTTPException(status_code=400, detail="Invalid activation code")
 
     if user.invite_token_expires_at is not None and user.invite_token_expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Activation code has expired — ask the school to re-add you")
 
+    if user.invite_token != payload.invite_token:
+        user.invite_token_attempts += 1
+        if user.invite_token_attempts >= _MAX_INVITE_TOKEN_ATTEMPTS:
+            user.invite_token = None
+            user.invite_token_expires_at = None
+            user.invite_token_attempts = 0
+            platform_db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail="Too many incorrect attempts — ask the school to resend your activation code",
+            )
+        platform_db.commit()
+        raise HTTPException(status_code=400, detail="Invalid activation code")
+
     user.password_hash = hash_password(payload.password)
     user.email_verified = True
     user.invite_token = None
     user.invite_token_expires_at = None
+    user.invite_token_attempts = 0
     platform_db.commit()
 
     token = create_access_token(subject=str(user.id))

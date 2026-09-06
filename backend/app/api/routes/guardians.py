@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 _INVITE_TOKEN_VALIDITY = timedelta(days=7)
 
 
+def _generate_invite_code() -> str:
+    """A 7-digit numeric code — easier for a parent to type on a phone than
+    the old long random token. See PlatformUser.invite_token_attempts for
+    the lockout that compensates for the much lower entropy.
+    """
+    return f"{secrets.randbelow(10_000_000):07d}"
+
+
 def _activation_email(school_name: str, email: str, invite_token: str) -> None:
     """Best-effort — the guardian/invite record this follows is already
     committed by the time this runs, so an email outage (Postmark down,
@@ -91,7 +99,7 @@ def create_guardian(
             # parent (e.g. enrolling a second child, or one already at
             # another school) keeps whatever credentials/invite they
             # already have — use "resend activation" to reissue one.
-            invite_token = secrets.token_urlsafe(24)
+            invite_token = _generate_invite_code()
             platform_user = PlatformUser(
                 name=payload.name,
                 email=payload.email,
@@ -308,9 +316,10 @@ def resend_activation(
     if platform_user.password_hash is not None:
         raise HTTPException(status_code=409, detail="This guardian has already activated their account")
 
-    invite_token = secrets.token_urlsafe(24)
+    invite_token = _generate_invite_code()
     platform_user.invite_token = invite_token
     platform_user.invite_token_expires_at = datetime.now(timezone.utc) + _INVITE_TOKEN_VALIDITY
+    platform_user.invite_token_attempts = 0
     platform_db.commit()
 
     _activation_email(school.name, platform_user.email, invite_token)

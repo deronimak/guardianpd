@@ -118,6 +118,12 @@ class PlatformUser(PlatformBase):
     # cleared once the parent activates their account via /auth/parent/activate.
     invite_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
     invite_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Wrong-code counter for /auth/parent/activate — the code is only 7
+    # digits (10M possibilities), so unlike the old high-entropy token it
+    # needs a lockout: too many misses invalidates it, same as expiry does,
+    # rather than leaving it guessable indefinitely. Reset to 0 whenever a
+    # fresh code is issued (guardians.py's create_guardian/resend_activation).
+    invite_token_attempts: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class GuardianMembership(PlatformBase):

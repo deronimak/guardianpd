@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/parent_api_client.dart';
 import 'parent_home_screen.dart';
@@ -65,6 +66,11 @@ class _ParentActivateScreenState extends State<ParentActivateScreen> {
             TextField(
               controller: _codeController,
               decoration: const InputDecoration(labelText: 'Activation code'),
+              keyboardType: TextInputType.number,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(7),
+              ],
             ),
             TextField(
               controller: _passwordController,
