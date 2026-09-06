@@ -7,6 +7,8 @@ school is enrolled.
 """
 
 import re
+import threading
+from collections import OrderedDict
 from collections.abc import Generator
 
 from sqlalchemy import create_engine, text
@@ -23,7 +25,14 @@ TenantBase = declarative_base()
 # before ever interpolating it into SQL.
 _VALID_DB_NAME = re.compile(r"^[a-z][a-z0-9_]{2,62}$")
 
-_engine_cache: dict[str, Engine] = {}
+# Bounded LRU, not a plain dict — every school touched during the process's
+# life used to keep its own connection pool alive forever, which exhausts
+# Postgres's max_connections at any real number of schools (see
+# Settings.tenant_engine_cache_size). OrderedDict + a lock rather than
+# functools.lru_cache since eviction here must also dispose the evicted
+# engine's pool, not just drop a reference to it.
+_engine_cache: "OrderedDict[str, Engine]" = OrderedDict()
+_engine_cache_lock = threading.Lock()
 
 
 def tenant_url(tenant_db_name: str) -> str:
@@ -38,9 +47,30 @@ def tenant_url(tenant_db_name: str) -> str:
 
 
 def get_tenant_engine(tenant_db_name: str) -> Engine:
-    if tenant_db_name not in _engine_cache:
-        _engine_cache[tenant_db_name] = create_engine(tenant_url(tenant_db_name), pool_pre_ping=True)
-    return _engine_cache[tenant_db_name]
+    evicted: Engine | None = None
+    with _engine_cache_lock:
+        engine = _engine_cache.get(tenant_db_name)
+        if engine is not None:
+            _engine_cache.move_to_end(tenant_db_name)
+            return engine
+
+        engine = create_engine(
+            tenant_url(tenant_db_name),
+            pool_pre_ping=True,
+            pool_size=settings.tenant_engine_pool_size,
+            max_overflow=settings.tenant_engine_max_overflow,
+        )
+        _engine_cache[tenant_db_name] = engine
+
+        if len(_engine_cache) > settings.tenant_engine_cache_size:
+            _, evicted = _engine_cache.popitem(last=False)  # least-recently-used
+
+    if evicted is not None:
+        # Disposed outside the lock — closing pooled connections can block
+        # briefly, and nothing else needs the cache held up while it does.
+        evicted.dispose()
+
+    return engine
 
 
 def get_tenant_sessionmaker(tenant_db_name: str) -> sessionmaker:

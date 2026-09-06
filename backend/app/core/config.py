@@ -11,6 +11,20 @@ class Settings(BaseSettings):
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
 
+    # Bounds on app/db/tenant.py's tenant-engine LRU cache — without a cap,
+    # every school touched during the process's life keeps its own
+    # connection pool alive forever, which exhausts Postgres's
+    # max_connections long before the database itself is the bottleneck at
+    # any real number of schools. Defaults assume Railway's unmodified
+    # Postgres image (max_connections=100): cache_size(20) *
+    # (pool_size(1) + max_overflow(2)) = 60 tenant connections, worst case,
+    # leaving headroom for the platform engine's own pool (~15) plus
+    # Alembic/admin connections. Raise these together with your Postgres
+    # plan's max_connections, not independently.
+    tenant_engine_cache_size: int = 20
+    tenant_engine_pool_size: int = 1
+    tenant_engine_max_overflow: int = 2
+
     qr_signing_key: str = "change-me-dev-only"
     jwt_secret_key: str = "change-me-dev-only"
     jwt_algorithm: str = "HS256"
