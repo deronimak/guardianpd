@@ -16,13 +16,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expires_minutes: int = 720
 
-    # Welfare-email delivery (ARCHITECTURE.md §7) via Postmark's HTTP API —
+    # Welfare-email delivery (ARCHITECTURE.md §7) via Brevo's HTTP API —
     # not raw SMTP. Railway's outbound network silently times out on SMTP
-    # ports (25/465/587), a common PaaS anti-spam egress policy; Postmark's
+    # ports (25/465/587), a common PaaS anti-spam egress policy; Brevo's
     # API is plain HTTPS, which is never blocked. Left blank by default so
     # the welfare job runs end-to-end in local dev without a real provider
     # — see app/core/email.py for the log-only fallback this enables.
-    postmark_server_token: str = ""
+    brevo_api_key: str = ""
     email_from_address: str = "attendance@example.com"
 
     # Push notifications on scan (ARCHITECTURE.md §5 point 5). Requires a
