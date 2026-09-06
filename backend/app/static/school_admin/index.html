@@ -76,6 +76,18 @@
   button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
   button.danger:hover { background: #fef2f2; }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .spinner {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(255,255,255,0.5);
+    border-top-color: #fff;
+    border-radius: 50%;
+    margin-right: 7px;
+    vertical-align: -2px;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
   .input {
     padding: 8px 10px;
@@ -204,7 +216,7 @@
       </div>
       <div class="full" id="child-inputs"></div>
       <div class="full">
-        <button type="submit">Add guardian</button>
+        <button type="submit" id="add-guardian-submit">Add guardian</button>
       </div>
     </form>
   </div>
@@ -335,6 +347,10 @@
       phone: document.getElementById("f-phone").value.trim() || null,
       children,
     };
+    const submitButton = document.getElementById("add-guardian-submit");
+    const originalLabel = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<span class="spinner"></span>Adding…`;
     try {
       const guardian = await apiFetch("/guardians", { method: "POST", body: JSON.stringify(payload) });
       log(`Enrolled "${guardian.name}" with ${guardian.children.length} child(ren) — activation email sent.`, true);
@@ -350,6 +366,9 @@
       renderChildInputs();
     } catch (e) {
       log(`Enroll failed: ${e.message}`, false);
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalLabel;
     }
     return false;
   }
