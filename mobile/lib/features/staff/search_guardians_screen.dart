@@ -48,7 +48,16 @@ class _SearchGuardiansScreenState extends State<SearchGuardiansScreen> {
       final safeName = guardianName.replaceAll(RegExp(r'\s+'), '_');
       final file = File('${dir.path}/$safeName-qr-credential.pdf');
       await file.writeAsBytes(bytes, flush: true);
-      await Share.shareXFiles([XFile(file.path)], subject: '$guardianName QR credential');
+      if (!mounted) return;
+      // sharePositionOrigin is required on iOS (it's where the share sheet's
+      // popover anchors on iPad, and iOS throws a PlatformException without
+      // it) — anchor it to this screen's own bounds.
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: '$guardianName QR credential',
+        sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      );
     } catch (e) {
       setState(() => _error = 'Could not get the QR credential: $e');
     } finally {
