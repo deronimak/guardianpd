@@ -59,6 +59,35 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
     }
   }
 
+  Future<void> _recordAll() async {
+    setState(() => _busy = true);
+    final recorded = <String>[];
+    final failed = <String>[];
+    for (final student in _students!) {
+      try {
+        final result = await widget.apiClient.scanQr(
+          qrToken: _pendingQrToken!,
+          studentId: student['id'] as String,
+          type: _type,
+        );
+        recorded.add('${student['name']} (${result['status']})');
+      } catch (e) {
+        failed.add(student['name'] as String);
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _status = failed.isEmpty
+          ? 'Recorded: ${recorded.join(', ')}'
+          : 'Recorded ${recorded.length}, failed: ${failed.join(', ')}';
+      _pendingQrToken = null;
+      _guardianId = null;
+      _guardianName = null;
+      _students = null;
+    });
+  }
+
   Future<void> _recordFor(String studentId, String studentName) async {
     setState(() => _busy = true);
     try {
@@ -152,6 +181,13 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
           selected: {_type},
           onSelectionChanged: (selection) => setState(() => _type = selection.first),
         ),
+        if (_students!.length > 1) ...[
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: _busy ? null : _recordAll,
+            child: Text('Record all ${_students!.length} children'),
+          ),
+        ],
         const SizedBox(height: 12),
         for (final student in _students!)
           Card(
