@@ -35,7 +35,12 @@ workflows:
       - name: Get Flutter packages
         script: flutter packages pub get
       - name: Build release AAB
-        script: flutter build appbundle --release
+        script: |
+          # Without this, ApiClient.baseUrl (mobile/lib/core/api_client.dart)
+          # falls back to its local-dev default (http://10.0.2.2:8000 on
+          # Android) — meaningless on a real device, since that only
+          # resolves to the host machine from an emulator.
+          flutter build appbundle --release --dart-define=API_BASE_URL=https://guardianpd-production.up.railway.app
     artifacts:
       - build/app/outputs/bundle/release/*.aab
       - build/app/outputs/**/mapping.txt
@@ -78,7 +83,13 @@ workflows:
         script: find . -name "Podfile" -execdir pod install \;
       - name: Build ipa
         script: |
+          # Without this, ApiClient.baseUrl (mobile/lib/core/api_client.dart)
+          # falls back to its local-dev default (http://localhost:8000) —
+          # meaningless on a real device, since that just means "this
+          # iPhone itself." This is what caused the blank-screen hang on a
+          # real iPhone 17 Pro: every API call silently failed to connect.
           flutter build ipa --release \
+            --dart-define=API_BASE_URL=https://guardianpd-production.up.railway.app \
             --export-options-plist=/Users/builder/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
