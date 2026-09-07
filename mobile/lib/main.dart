@@ -12,8 +12,8 @@ Future<void> main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Android-only, same platform gate as lib/core/push_registration.dart —
-    // this dev setup has no Firebase web/iOS config yet.
+    // Android and iOS, same platform gate as lib/core/push_registration.dart
+    // — Firebase web needs its own service worker setup we haven't added.
     if (!kIsWeb) {
       await Firebase.initializeApp();
       // Crash reports are noise in local dev; only report from real builds.

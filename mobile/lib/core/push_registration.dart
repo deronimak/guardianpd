@@ -7,8 +7,8 @@ import 'parent_api_client.dart';
 /// Requests notification permission, obtains a real FCM device token, and
 /// registers it with the backend (ARCHITECTURE.md §5 point 5).
 ///
-/// Android-only for now: Firebase web needs its own service worker setup
-/// we haven't added, and this dev machine has no way to build/test iOS.
+/// Android and iOS (the `kIsWeb` guard below excludes web only) — Firebase
+/// web needs its own service worker setup we haven't added.
 ///
 /// Failures here are swallowed (logged only) — push notifications are a
 /// nice-to-have; a parent should still be able to use the app if

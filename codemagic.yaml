@@ -7,11 +7,12 @@ workflows:
     environment:
       flutter: stable
       groups:
-        # Create these two groups under Codemagic > Team settings >
-        # Environment variables (or per-app settings) — see the setup
-        # notes below for exactly which variables each one holds.
+        # Create these groups under Codemagic > Team settings > Environment
+        # variables (or per-app settings) — see the setup notes below for
+        # exactly which variables each one holds.
         - android_signing
         - google_play
+        - firebase_config
     scripts:
       - name: Write Android release-signing config
         script: |
@@ -26,6 +27,11 @@ workflows:
           keyAlias=$CM_KEY_ALIAS
           storeFile=$CM_BUILD_DIR/mobile/android/app/upload-keystore.jks
           EOF
+      - name: Write Firebase Android config
+        script: |
+          # google-services.json is also gitignored (android/.gitignore) —
+          # same reasoning as the keystore above.
+          echo "$FIREBASE_ANDROID_GOOGLE_SERVICES_JSON" | base64 --decode > "$CM_BUILD_DIR/mobile/android/app/google-services.json"
       - name: Get Flutter packages
         script: flutter packages pub get
       - name: Build release AAB
@@ -38,3 +44,46 @@ workflows:
         credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
         track: alpha
         submit_as_draft: false
+
+  ios-testflight:
+    name: GuardianPD - iOS TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    working_directory: mobile
+    integrations:
+      # Register this once in Codemagic > Team settings > Integrations >
+      # Developer Portal, name it "codemagic" (or update the name below to
+      # match whatever you called it) — it needs an App Store Connect API
+      # key with App Manager permission. Codemagic then fetches/creates the
+      # right signing certificate + provisioning profile automatically.
+      app_store_connect: codemagic
+    environment:
+      flutter: stable
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.schoolqr.mobile
+      groups:
+        - firebase_config
+    scripts:
+      - name: Write Firebase iOS config
+        script: |
+          # GoogleService-Info.plist is gitignored (ios/.gitignore) — same
+          # reasoning as Android's google-services.json above.
+          echo "$FIREBASE_IOS_GOOGLE_SERVICE_INFO_PLIST" | base64 --decode > "$CM_BUILD_DIR/mobile/ios/Runner/GoogleService-Info.plist"
+      - name: Get Flutter packages
+        script: flutter packages pub get
+      - name: Set up code signing settings on Xcode project
+        script: xcode-project use-profiles
+      - name: Install CocoaPods dependencies
+        script: find . -name "Podfile" -execdir pod install \;
+      - name: Build ipa
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
