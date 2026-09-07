@@ -8,29 +8,48 @@ import 'package:flutter/material.dart';
 
 import 'features/auth/role_select_screen.dart';
 
-Future<void> main() async {
-  runZonedGuarded(() async {
+void main() {
+  runZonedGuarded(() {
     WidgetsFlutterBinding.ensureInitialized();
 
-    // Android and iOS, same platform gate as lib/core/push_registration.dart
-    // — Firebase web needs its own service worker setup we haven't added.
-    if (!kIsWeb) {
-      await Firebase.initializeApp();
-      // Crash reports are noise in local dev; only report from real builds.
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
-      FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
-      PlatformDispatcher.instance.onError = (error, stack) {
-        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-        return true;
-      };
-    }
-
+    // runApp() happens immediately, before Firebase — a real iPhone test
+    // showed an indefinite blank white screen with no crash logged, which
+    // pointed at Firebase.initializeApp() blocking the very first frame
+    // (RoleSelectScreen itself needs no network/Firebase to render). Crash
+    // reporting and push are non-critical, so they're wired up in the
+    // background afterward instead of gating the UI on them.
     runApp(const MyApp());
-  }, (error, stack) {
+
     if (!kIsWeb) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      _initializeFirebase();
+    }
+  }, (error, stack) {
+    // Best-effort — if Firebase never finished initializing, Crashlytics
+    // itself isn't ready to record this either; swallow rather than throw
+    // a second unhandled error out of this zone's own error handler.
+    if (!kIsWeb) {
+      try {
+        FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      } catch (_) {}
     }
   });
+}
+
+// Android and iOS, same platform gate as lib/core/push_registration.dart —
+// Firebase web needs its own service worker setup we haven't added.
+Future<void> _initializeFirebase() async {
+  try {
+    await Firebase.initializeApp();
+    // Crash reports are noise in local dev; only report from real builds.
+    await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(!kDebugMode);
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+  } catch (error, stack) {
+    debugPrint('Firebase initialization failed, continuing without it: $error\n$stack');
+  }
 }
 
 // Single source of truth for button styling — every ElevatedButton,
