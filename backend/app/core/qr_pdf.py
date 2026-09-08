@@ -14,6 +14,7 @@ server-side at scan time regardless of what's printed here.
 import io
 
 import qrcode
+from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -105,11 +106,13 @@ def generate_qr_credential_pdf(
     text_width = CARD_WIDTH - _MARGIN - text_x
     y = CARD_HEIGHT - _MARGIN - 8
 
+    pdf.setFillColor(colors.blue)
     pdf.setFont("Helvetica-Bold", 8)
     for line in _wrap_to_width(pdf, school_name, "Helvetica-Bold", 8, text_width):
         pdf.drawString(text_x, y, line)
         y -= 9
 
+    pdf.setFillColor(colors.black)
     y -= 3
     pdf.setFont("Helvetica-Bold", 10)
     for line in _wrap_to_width(pdf, guardian_name, "Helvetica-Bold", 10, text_width):
