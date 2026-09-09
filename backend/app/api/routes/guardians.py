@@ -1,7 +1,7 @@
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
@@ -196,22 +196,32 @@ def search_guardians(query: str | None = None, tenant_db: Session = Depends(get_
 
 
 @router.get("/{guardian_id}/attendance", dependencies=[Depends(require_school_admin)])
-def guardian_attendance_history(guardian_id: uuid.UUID, tenant_db: Session = Depends(get_tenant_db)) -> list[dict]:
+def guardian_attendance_history(
+    guardian_id: uuid.UUID,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    tenant_db: Session = Depends(get_tenant_db),
+) -> list[dict]:
     """Every drop-off/pick-up this guardian has been scanned in for, most
     recent first — backs the School Admin "view attendance" screen. Mirrors
     app/api/routes/parent.py's student_attendance_history, keyed by guardian
     instead of by student since one guardian can cover several children.
+
+    `start_date`/`end_date` (both inclusive, in the school's own local
+    dates) narrow the range — a full term of twice-daily events for a
+    guardian with several children adds up fast, so the console groups
+    this by day and defaults to a recent window rather than dumping
+    everything at once.
     """
     if tenant_db.get(Guardian, guardian_id) is None:
         raise HTTPException(status_code=404, detail="Unknown guardian")
 
-    events = (
-        tenant_db.query(AttendanceEvent)
-        .filter_by(guardian_id=guardian_id)
-        .order_by(AttendanceEvent.timestamp.desc())
-        .limit(200)
-        .all()
-    )
+    q = tenant_db.query(AttendanceEvent).filter_by(guardian_id=guardian_id)
+    if start_date is not None:
+        q = q.filter(AttendanceEvent.timestamp >= start_date)
+    if end_date is not None:
+        q = q.filter(AttendanceEvent.timestamp < end_date + timedelta(days=1))
+    events = q.order_by(AttendanceEvent.timestamp.desc()).limit(500).all()
 
     student_ids = {e.student_id for e in events}
     students = (

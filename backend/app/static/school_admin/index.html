@@ -232,18 +232,47 @@
   .row-actions button { padding: 7px 13px; font-size: 12px; box-shadow: none; }
   .row-actions button:hover { box-shadow: none; }
 
-  .attendance-list { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 6px; }
-  .attendance-row {
-    display: flex; align-items: flex-start; gap: 10px;
-    font-size: 12.5px; padding: 8px 10px; border-radius: var(--radius-sm);
-    background: var(--bg);
+  .attendance-panel { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 14px; }
+  .attendance-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip {
+    background: #fff; color: var(--text-muted); border: 1.5px solid var(--border-strong);
+    padding: 6px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    box-shadow: none; transition: all 0.15s;
   }
-  .attendance-row.flagged { background: var(--danger-soft); }
-  .attendance-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+  .chip:hover { border-color: var(--accent); color: var(--accent-dark); box-shadow: none; background: #fff; }
+  .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 2px 6px rgba(109,94,245,0.28); }
+  .custom-range-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 14px; }
+  .custom-range-row input[type="date"] {
+    padding: 7px 10px; border: 1.5px solid var(--border-strong); border-radius: var(--radius-sm);
+    font-size: 12.5px; font-family: var(--font); color: var(--text);
+  }
+  .custom-range-row input[type="date"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .custom-range-row button { padding: 7px 14px; font-size: 12px; }
+
+  .attendance-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .stat-card { background: var(--bg); border-radius: var(--radius-sm); padding: 10px 12px; }
+  .stat-card .label { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 3px; }
+  .stat-card .value { font-size: 19px; font-weight: 700; font-family: var(--font-display); }
+  .stat-card .value.danger { color: var(--danger); }
+
+  .day-group { margin-bottom: 14px; }
+  .day-group .day-label {
+    font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase;
+    letter-spacing: 0.04em; margin: 0 2px 6px;
+  }
+  .day-table { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .day-table-header, .day-table-row {
+    display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; align-items: center;
+    padding: 9px 12px; font-size: 12.5px;
+  }
+  .day-table-header { background: var(--bg); color: var(--text-faint); font-size: 11px; font-weight: 600; }
+  .day-table-row { border-top: 1px solid var(--border); }
+  .day-table-row.flagged { background: var(--danger-soft); }
+  .attendance-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
   .attendance-dot.drop_off { background: var(--accent); }
   .attendance-dot.pick_up { background: var(--success); }
-  .attendance-row .when { color: var(--text-faint); font-size: 11.5px; }
-  .attendance-row .flag-tag { color: var(--danger); font-weight: 600; }
+  .day-table-row .flag-tag { color: var(--danger); font-weight: 600; }
+  .day-table-row .muted { color: var(--text-faint); }
 
   #log {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -569,6 +598,18 @@
     }
   }
 
+  window.__attendanceFilter = {};
+
+  function isoDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function presetRange(days) {
+    const end = new Date();
+    const start = days ? new Date(end.getTime() - days * 86400000) : null;
+    return { start: start ? isoDate(start) : null, end: isoDate(end) };
+  }
+
   async function toggleAttendance(guardianId) {
     const container = document.getElementById(`guardian-attendance-${guardianId}`);
     const isOpen = container.style.display !== "none";
@@ -577,38 +618,141 @@
       return;
     }
     container.style.display = "block";
-    container.innerHTML = '<p class="empty">Loading attendance...</p>';
+    window.__attendanceFilter[guardianId] = { mode: "last30" };
+    renderAttendanceToolbar(guardianId);
+    await loadAttendanceResults(guardianId);
+  }
+
+  function renderAttendanceToolbar(guardianId) {
+    const filter = window.__attendanceFilter[guardianId];
+    const container = document.getElementById(`guardian-attendance-${guardianId}`);
+    const chip = (mode, label) =>
+      `<button class="chip${filter.mode === mode ? " active" : ""}" onclick="setAttendanceMode('${guardianId}', '${mode}')">${label}</button>`;
+    container.innerHTML = `
+      <div class="attendance-panel">
+        <div class="attendance-toolbar">
+          ${chip("last7", "Last 7 days")}
+          ${chip("last30", "Last 30 days")}
+          ${chip("all", "All time")}
+          ${chip("custom", "Custom range")}
+        </div>
+        <div class="custom-range-row" id="custom-range-${guardianId}" style="display:${filter.mode === "custom" ? "flex" : "none"};">
+          <input type="date" id="range-start-${guardianId}" value="${filter.start || ""}" />
+          <span style="color:var(--text-faint); font-size:12px;">to</span>
+          <input type="date" id="range-end-${guardianId}" value="${filter.end || ""}" />
+          <button onclick="applyCustomRange('${guardianId}')">Apply</button>
+        </div>
+        <div id="attendance-results-${guardianId}"><p class="empty">Loading attendance...</p></div>
+      </div>`;
+  }
+
+  function setAttendanceMode(guardianId, mode) {
+    const filter = window.__attendanceFilter[guardianId];
+    filter.mode = mode;
+    if (mode !== "custom") {
+      delete filter.start;
+      delete filter.end;
+    }
+    renderAttendanceToolbar(guardianId);
+    if (mode !== "custom") loadAttendanceResults(guardianId);
+  }
+
+  function applyCustomRange(guardianId) {
+    const start = document.getElementById(`range-start-${guardianId}`).value;
+    const end = document.getElementById(`range-end-${guardianId}`).value;
+    const resultsEl = document.getElementById(`attendance-results-${guardianId}`);
+    if (!start || !end) {
+      resultsEl.innerHTML = '<p class="empty">Pick both a start and end date.</p>';
+      return;
+    }
+    if (start > end) {
+      resultsEl.innerHTML = '<p class="empty">Start date must be on or before the end date.</p>';
+      return;
+    }
+    window.__attendanceFilter[guardianId] = { mode: "custom", start, end };
+    loadAttendanceResults(guardianId);
+  }
+
+  async function loadAttendanceResults(guardianId) {
+    const resultsEl = document.getElementById(`attendance-results-${guardianId}`);
+    resultsEl.innerHTML = '<p class="empty">Loading attendance...</p>';
+    const filter = window.__attendanceFilter[guardianId];
+    let start = filter.start;
+    let end = filter.end;
+    if (filter.mode !== "custom") {
+      const days = { last7: 7, last30: 30, all: null }[filter.mode];
+      const range = presetRange(days);
+      start = range.start;
+      end = range.end;
+    }
+    const params = new URLSearchParams();
+    if (start) params.set("start_date", start);
+    if (end) params.set("end_date", end);
     try {
-      const events = await apiFetch(`/guardians/${guardianId}/attendance`);
-      container.innerHTML = attendanceHtml(events);
+      const events = await apiFetch(`/guardians/${guardianId}/attendance?${params.toString()}`);
+      resultsEl.innerHTML = attendanceResultsHtml(events);
     } catch (e) {
-      container.innerHTML = `<p class="empty">Could not load attendance: ${e.message}</p>`;
+      resultsEl.innerHTML = `<p class="empty">Could not load attendance: ${e.message}</p>`;
     }
   }
 
-  function attendanceHtml(events) {
+  function attendanceResultsHtml(events) {
     if (events.length === 0) {
-      return '<p class="empty">No attendance recorded yet.</p>';
+      return '<p class="empty">No attendance recorded in this range.</p>';
     }
-    const rows = events
-      .map((e) => {
-        const when = new Date(e.timestamp).toLocaleString();
-        const kind = e.type === "drop_off" ? "Drop-off" : "Pick-up";
-        const flag = e.flagged
-          ? `<span class="flag-tag"> · Flagged${e.flag_reason ? ": " + escapeAttr(e.flag_reason) : ""}</span>`
-          : "";
-        const staff = e.scanned_by ? ` · Scanned by ${escapeAttr(e.scanned_by)}` : "";
+    const byDate = {};
+    let flaggedCount = 0;
+    for (const e of events) {
+      const dateKey = isoDate(new Date(e.timestamp));
+      (byDate[dateKey] = byDate[dateKey] || []).push(e);
+      if (e.flagged) flaggedCount++;
+    }
+    const sortedDates = Object.keys(byDate).sort().reverse();
+
+    const stats = `
+      <div class="attendance-stats">
+        <div class="stat-card"><div class="label">Days present</div><div class="value">${sortedDates.length}</div></div>
+        <div class="stat-card"><div class="label">Total events</div><div class="value">${events.length}</div></div>
+        <div class="stat-card"><div class="label">Flagged</div><div class="value${flaggedCount ? " danger" : ""}">${flaggedCount}</div></div>
+      </div>`;
+
+    return stats + sortedDates.map((dateKey) => dayGroupHtml(dateKey, byDate[dateKey])).join("");
+  }
+
+  function dayGroupHtml(dateKey, dayEvents) {
+    const label = new Date(`${dateKey}T00:00:00`).toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    const names = [...new Set(dayEvents.map((e) => e.student_name || "Unknown child"))];
+    const cell = (ev, missingLabel) => {
+      if (!ev) return `<span class="muted">${missingLabel}</span>`;
+      if (ev.flagged) return `<span class="flag-tag">${escapeAttr(ev.flag_reason || "Flagged")}</span>`;
+      const time = new Date(ev.timestamp).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      return `<span><span class="attendance-dot ${ev.type}"></span>${time}</span>`;
+    };
+    const rows = names
+      .map((name) => {
+        const dropOff = dayEvents.find((e) => e.type === "drop_off" && (e.student_name || "Unknown child") === name);
+        const pickUp = dayEvents.find((e) => e.type === "pick_up" && (e.student_name || "Unknown child") === name);
+        const flagged = Boolean((dropOff && dropOff.flagged) || (pickUp && pickUp.flagged));
         return `
-          <div class="attendance-row${e.flagged ? " flagged" : ""}">
-            <span class="attendance-dot ${e.type}"></span>
-            <span>
-              <strong>${kind}</strong> — ${escapeAttr(e.student_name || "Unknown child")}${staff}${flag}
-              <div class="when">${when}</div>
-            </span>
+          <div class="day-table-row${flagged ? " flagged" : ""}">
+            <span>${escapeAttr(name)}</span>
+            ${cell(dropOff, "No drop-off recorded")}
+            ${cell(pickUp, "No pick-up recorded")}
           </div>`;
       })
       .join("");
-    return `<div class="attendance-list">${rows}</div>`;
+    return `
+      <div class="day-group">
+        <div class="day-label">${label}</div>
+        <div class="day-table">
+          <div class="day-table-header"><span>Child</span><span>Drop-off</span><span>Pick-up</span></div>
+          ${rows}
+        </div>
+      </div>`;
   }
 
   async function searchGuardians() {

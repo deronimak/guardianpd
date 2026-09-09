@@ -217,3 +217,50 @@ def test_school_staff_cannot_view_guardian_attendance_history(client, school_adm
 
     resp = client.get(f"/guardians/{guardian_id}/attendance", headers=school_staff_headers)
     assert resp.status_code == 403
+
+
+def test_guardian_attendance_history_date_range_filter(client, school_admin_headers, school_staff_headers):
+    import datetime as dt
+
+    create_resp = client.post(
+        "/guardians",
+        json={
+            "name": "Rina Range",
+            "email": f"rina-{uuid.uuid4().hex[:10]}@example.com",
+            "children": [{"name": "Remi Range"}],
+        },
+        headers=school_admin_headers,
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    body = create_resp.json()
+    qr_token = body["qr_token"]
+    guardian_id = body["id"]
+    student_id = body["children"][0]["id"]
+
+    scan_resp = client.post(
+        "/attendance/scan",
+        json={"token": qr_token, "student_id": student_id, "type": "drop_off"},
+        headers=school_staff_headers,
+    )
+    assert scan_resp.status_code == 200, scan_resp.text
+
+    today = dt.date.today()
+
+    in_range = client.get(
+        f"/guardians/{guardian_id}/attendance",
+        params={"start_date": today.isoformat(), "end_date": today.isoformat()},
+        headers=school_admin_headers,
+    )
+    assert in_range.status_code == 200, in_range.text
+    assert len(in_range.json()) == 1
+
+    out_of_range = client.get(
+        f"/guardians/{guardian_id}/attendance",
+        params={
+            "start_date": (today - dt.timedelta(days=10)).isoformat(),
+            "end_date": (today - dt.timedelta(days=1)).isoformat(),
+        },
+        headers=school_admin_headers,
+    )
+    assert out_of_range.status_code == 200, out_of_range.text
+    assert out_of_range.json() == []
