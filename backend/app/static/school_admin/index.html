@@ -413,7 +413,7 @@
     <div class="row-actions" style="margin-bottom:16px;">
       <input type="text" id="search-query" placeholder="Name, email, or phone" style="flex:1; padding:10px 12px; border:1.5px solid var(--border-strong); border-radius:var(--radius-sm); font-size:13.5px; font-family:var(--font);"
              onkeydown="if(event.key==='Enter') searchGuardians()" />
-      <button onclick="searchGuardians()">Search</button>
+      <button id="search-guardians-submit" onclick="searchGuardians()">Search</button>
     </div>
     <div id="search-results"><p class="empty">Search for a guardian to print their QR credential again, resend their activation email, or review attendance.</p></div>
   </div>
@@ -758,6 +758,10 @@
   async function searchGuardians() {
     const query = document.getElementById("search-query").value.trim();
     const container = document.getElementById("search-results");
+    const submitButton = document.getElementById("search-guardians-submit");
+    const originalLabel = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<span class="spinner"></span>Searching…`;
     try {
       const path = `/guardians${query ? "?query=" + encodeURIComponent(query) : ""}`;
       const guardians = await apiFetch(path);
@@ -769,6 +773,9 @@
       container.innerHTML = guardians.map((g) => guardianCardHtml(g)).join("");
     } catch (e) {
       container.innerHTML = `<p class="empty">Search failed: ${e.message}</p>`;
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalLabel;
     }
   }
 
