@@ -360,7 +360,7 @@
     <input type="text" id="login-slug" placeholder="School slug" autocomplete="off" />
     <input type="email" id="login-email" placeholder="you@example.com" autocomplete="username" />
     <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
-    <button onclick="login()">Log in</button>
+    <button id="login-submit" onclick="login()">Log in</button>
   </div>
 </div>
 
@@ -484,6 +484,10 @@
     errorEl.style.display = "none";
     if (!slug || !email || !password) return;
     setSlug(slug);
+    const submitButton = document.getElementById("login-submit");
+    const originalLabel = submitButton.innerHTML;
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<span class="spinner"></span>Logging in…`;
     try {
       const body = await apiFetch("/auth/staff/login", {
         method: "POST",
@@ -501,6 +505,9 @@
     } catch (e) {
       errorEl.textContent = `Login failed: ${e.message}`;
       errorEl.style.display = "block";
+    } finally {
+      submitButton.disabled = false;
+      submitButton.innerHTML = originalLabel;
     }
   }
 
