@@ -399,6 +399,41 @@
     }
   }
 
+  async function toggleAttendance(guardianId) {
+    const container = document.getElementById(`guardian-attendance-${guardianId}`);
+    const isOpen = container.style.display !== "none";
+    if (isOpen) {
+      container.style.display = "none";
+      return;
+    }
+    container.style.display = "block";
+    container.innerHTML = '<p class="empty">Loading attendance...</p>';
+    try {
+      const events = await apiFetch(`/guardians/${guardianId}/attendance`);
+      container.innerHTML = attendanceHtml(events);
+    } catch (e) {
+      container.innerHTML = `<p class="empty">Could not load attendance: ${e.message}</p>`;
+    }
+  }
+
+  function attendanceHtml(events) {
+    if (events.length === 0) {
+      return '<p class="empty">No attendance recorded yet.</p>';
+    }
+    const rows = events
+      .map((e) => {
+        const when = new Date(e.timestamp).toLocaleString();
+        const kind = e.type === "drop_off" ? "Drop-off" : "Pick-up";
+        const flag = e.flagged
+          ? `<span style="color:var(--danger);"> · Flagged${e.flag_reason ? ": " + escapeAttr(e.flag_reason) : ""}</span>`
+          : "";
+        const staff = e.scanned_by ? ` · Scanned by ${escapeAttr(e.scanned_by)}` : "";
+        return `<div class="child-row"><span>${when} — ${kind} — ${escapeAttr(e.student_name || "Unknown child")}${staff}${flag}</span></div>`;
+      })
+      .join("");
+    return `<div class="children-list" style="margin-top:8px;">${rows}</div>`;
+  }
+
   async function searchGuardians() {
     const query = document.getElementById("search-query").value.trim();
     const container = document.getElementById("search-results");
@@ -428,11 +463,13 @@
           <div class="row-actions">
             <button onclick="printCredential('${g.id}', '${escapeAttr(g.name)}')">Print QR</button>
             <button class="secondary" onclick="resendActivation('${g.id}', '${escapeAttr(g.name)}')">Resend activation</button>
+            <button class="secondary" onclick="toggleAttendance('${g.id}')">View attendance</button>
             <button class="secondary" onclick="startEditGuardian('${g.id}')">Edit</button>
             <button class="danger" onclick="deleteGuardian('${g.id}', '${escapeAttr(g.name)}')">Delete</button>
           </div>
         </div>
         <div id="guardian-edit-${g.id}" style="display:none;"></div>
+        <div id="guardian-attendance-${g.id}" style="display:none;"></div>
         <div class="children-list" id="children-list-${g.id}">${childrenHtml}</div>
       </div>`;
   }

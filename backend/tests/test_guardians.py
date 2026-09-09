@@ -172,3 +172,48 @@ def test_school_staff_cannot_update_or_delete_guardians(client, school_admin_hea
 
     delete_resp = client.delete(f"/guardians/{guardian_id}", headers=school_staff_headers)
     assert delete_resp.status_code == 403
+
+
+def test_guardian_attendance_history(client, school_admin_headers, school_staff_headers):
+    create_resp = client.post(
+        "/guardians",
+        json={
+            "name": "Hattie History",
+            "email": f"hattie-{uuid.uuid4().hex[:10]}@example.com",
+            "children": [{"name": "Hank History"}],
+        },
+        headers=school_admin_headers,
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    body = create_resp.json()
+    qr_token = body["qr_token"]
+    guardian_id = body["id"]
+    student_id = body["children"][0]["id"]
+
+    scan_resp = client.post(
+        "/attendance/scan",
+        json={"token": qr_token, "student_id": student_id, "type": "drop_off"},
+        headers=school_staff_headers,
+    )
+    assert scan_resp.status_code == 200, scan_resp.text
+
+    history_resp = client.get(f"/guardians/{guardian_id}/attendance", headers=school_admin_headers)
+    assert history_resp.status_code == 200, history_resp.text
+    events = history_resp.json()
+    assert len(events) == 1
+    assert events[0]["type"] == "drop_off"
+    assert events[0]["student_name"] == "Hank History"
+    assert events[0]["flagged"] is False
+
+
+def test_guardian_attendance_history_unknown_guardian_is_404(client, school_admin_headers):
+    resp = client.get(f"/guardians/{uuid.uuid4()}/attendance", headers=school_admin_headers)
+    assert resp.status_code == 404
+
+
+def test_school_staff_cannot_view_guardian_attendance_history(client, school_admin_headers, school_staff_headers):
+    create_resp = client.post("/guardians", json=_guardian_payload(), headers=school_admin_headers)
+    guardian_id = create_resp.json()["id"]
+
+    resp = client.get(f"/guardians/{guardian_id}/attendance", headers=school_staff_headers)
+    assert resp.status_code == 403

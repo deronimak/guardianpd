@@ -20,6 +20,7 @@ from app.models.tenant import (
     GuardianStudentLink,
     Notification,
     QRCredential,
+    StaffUser,
     Student,
 )
 from app.schemas.guardian import (
@@ -191,6 +192,51 @@ def search_guardians(query: str | None = None, tenant_db: Session = Depends(get_
             "children": children_by_guardian[g.id],
         }
         for g in guardians
+    ]
+
+
+@router.get("/{guardian_id}/attendance", dependencies=[Depends(require_school_admin)])
+def guardian_attendance_history(guardian_id: uuid.UUID, tenant_db: Session = Depends(get_tenant_db)) -> list[dict]:
+    """Every drop-off/pick-up this guardian has been scanned in for, most
+    recent first — backs the School Admin "view attendance" screen. Mirrors
+    app/api/routes/parent.py's student_attendance_history, keyed by guardian
+    instead of by student since one guardian can cover several children.
+    """
+    if tenant_db.get(Guardian, guardian_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown guardian")
+
+    events = (
+        tenant_db.query(AttendanceEvent)
+        .filter_by(guardian_id=guardian_id)
+        .order_by(AttendanceEvent.timestamp.desc())
+        .limit(200)
+        .all()
+    )
+
+    student_ids = {e.student_id for e in events}
+    students = (
+        {s.id: s for s in tenant_db.query(Student).filter(Student.id.in_(student_ids)).all()}
+        if student_ids
+        else {}
+    )
+    staff_ids = {e.scanned_by_staff_id for e in events if e.scanned_by_staff_id is not None}
+    staff = (
+        {s.id: s for s in tenant_db.query(StaffUser).filter(StaffUser.id.in_(staff_ids)).all()}
+        if staff_ids
+        else {}
+    )
+
+    return [
+        {
+            "id": str(event.id),
+            "type": event.type,
+            "timestamp": event.timestamp.isoformat(),
+            "student_name": students[event.student_id].name if event.student_id in students else None,
+            "scanned_by": staff[event.scanned_by_staff_id].name if event.scanned_by_staff_id in staff else None,
+            "flagged": event.flagged,
+            "flag_reason": event.flag_reason,
+        }
+        for event in events
     ]
 
 
