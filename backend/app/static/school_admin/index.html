@@ -547,7 +547,7 @@
         <div class="success-banner">
           <div><strong>${guardian.name}</strong> enrolled${guardian.children.length ? " with " + guardian.children.map((c) => c.name).join(", ") : ""}.
           <div class="row-actions" style="margin-top:10px;">
-            <button onclick="printCredential('${guardian.id}', '${escapeAttr(guardian.name)}')">Print QR credential</button>
+            <button onclick="printCredential('${guardian.id}', '${escapeAttr(guardian.name)}', this)">Print QR credential</button>
           </div></div>
         </div>`;
       event.target.reset();
@@ -576,7 +576,12 @@
     return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join("");
   }
 
-  async function printCredential(guardianId, guardianName) {
+  async function printCredential(guardianId, guardianName, buttonEl) {
+    const originalLabel = buttonEl ? buttonEl.innerHTML : null;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.innerHTML = `<span class="spinner"></span>Opening…`;
+    }
     try {
       const response = await apiFetch(`/guardians/${guardianId}/qr-credential.pdf`, { raw: true });
       if (!response.ok) throw new Error(`${response.status}`);
@@ -586,6 +591,11 @@
       log(`Opened QR credential for ${guardianName} — use the browser's print button.`, true);
     } catch (e) {
       log(`Could not open QR credential: ${e.message}`, false);
+    } finally {
+      if (buttonEl) {
+        buttonEl.disabled = false;
+        buttonEl.innerHTML = originalLabel;
+      }
     }
   }
 
@@ -792,7 +802,7 @@
               <div class="name">${g.name}</div>
               <div class="meta">${g.email || "—"}${g.phone ? " · " + g.phone : ""}</div>
               <div class="row-actions">
-                <button onclick="printCredential('${g.id}', '${escapeAttr(g.name)}')">Print QR</button>
+                <button onclick="printCredential('${g.id}', '${escapeAttr(g.name)}', this)">Print QR</button>
                 <button class="secondary" onclick="resendActivation('${g.id}', '${escapeAttr(g.name)}')">Resend activation</button>
                 <button class="secondary" onclick="toggleAttendance('${g.id}')">View attendance</button>
                 <button class="secondary" onclick="startEditGuardian('${g.id}')">Edit</button>
