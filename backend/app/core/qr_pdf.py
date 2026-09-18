@@ -30,6 +30,8 @@ _MARGIN = 0.12 * inch
 BRAND_PURPLE = colors.HexColor("#6A4FE0")
 BRAND_INK = colors.HexColor("#241F3D")
 BRAND_MUTED = colors.HexColor("#6B6483")
+BRAND_RED = colors.HexColor("#DC2626")
+BRAND_BLUE = colors.HexColor("#2563EB")
 
 
 def _split_long_token(pdf: canvas.Canvas, token: str, font: str, size: float, max_width: float) -> list[str]:
@@ -107,11 +109,11 @@ def _draw_front(
     children_names: list[str] | None,
     school_logo: ImageReader | None,
 ) -> None:
-    # Two purple-on-black diagonal corner accents (top-left, bottom-left),
-    # matching the school's reference PVC card design — recolored from its
-    # orange to the app's own brand purple. The top-left one is short enough
-    # (triangle_h) that the header row is the only content indented past it;
-    # every row below goes back to the card's own margin.
+    # Two diagonal corner accents (top-left, bottom-left) in the card's red
+    # accent, matching the school's reference PVC card design. The top-left
+    # one is short enough (triangle_h) that the header row is the only
+    # content indented past it; every row below goes back to the card's
+    # own margin.
     triangle_w = 0.55 * inch
     triangle_h = 0.34 * inch
     corner = pdf.beginPath()
@@ -119,21 +121,11 @@ def _draw_front(
     corner.lineTo(triangle_w, CARD_HEIGHT)
     corner.lineTo(0, CARD_HEIGHT - triangle_h)
     corner.close()
-    pdf.setFillColor(BRAND_INK)
-    pdf.drawPath(corner, fill=1, stroke=0)
-
-    accent = pdf.beginPath()
-    accent.moveTo(0, CARD_HEIGHT)
-    accent.lineTo(triangle_w + 0.05 * inch, CARD_HEIGHT)
-    accent.lineTo(0, CARD_HEIGHT - triangle_h - 0.05 * inch)
-    accent.close()
-    pdf.setFillColor(BRAND_PURPLE)
-    pdf.drawPath(accent, fill=1, stroke=0)
-    pdf.setFillColor(BRAND_INK)
+    pdf.setFillColor(BRAND_RED)
     pdf.drawPath(corner, fill=1, stroke=0)
 
     bar_h = 0.11 * inch
-    pdf.setFillColor(BRAND_PURPLE)
+    pdf.setFillColor(BRAND_RED)
     pdf.rect(0, 0, CARD_WIDTH, bar_h, fill=1, stroke=0)
     footer_triangle = pdf.beginPath()
     footer_triangle.moveTo(0, 0)
@@ -189,8 +181,8 @@ def _draw_front(
     pdf.drawImage(qr_image, qr_x, qr_y, width=qr_size, height=qr_size)
 
     pdf.setFillColor(BRAND_MUTED)
-    pdf.setFont("Helvetica", 5.5)
-    pdf.drawCentredString(qr_x + qr_size / 2, qr_y - 0.135 * inch, "Powered by GuardianPD")
+    pdf.setFont("Helvetica", 7.5)
+    pdf.drawCentredString(qr_x + qr_size / 2, qr_y - 0.155 * inch, "Powered by GuardianPD")
 
     # Guardian name + children, left column below the header row — clear of
     # the top-left accent (which ends at CARD_HEIGHT - triangle_h) by the
@@ -199,7 +191,7 @@ def _draw_front(
     text_width = qr_x - 0.16 * inch - text_x
     y = header_y - 0.16 * inch
 
-    pdf.setFillColor(BRAND_PURPLE)
+    pdf.setFillColor(BRAND_RED)
     pdf.setFont("Helvetica-Bold", 13)
     for line in _wrap_to_width(pdf, guardian_name, "Helvetica-Bold", 13, text_width)[:2]:
         pdf.drawString(text_x, y, line)
@@ -219,9 +211,11 @@ def _draw_front(
             if y < floor_y:
                 break
             label = f"Child {i}"
+            pdf.setFillColor(BRAND_INK)
             pdf.setFont("Helvetica-Bold", 7.5)
             pdf.drawString(text_x, y, label)
             label_w = pdf.stringWidth(label, "Helvetica-Bold", 7.5)
+            pdf.setFillColor(BRAND_BLUE)
             pdf.setFont("Helvetica", 7.5)
             name_col_x = text_x + max(label_w, 0.5 * inch) + 6
             for line in _wrap_to_width(pdf, f": {child}", "Helvetica", 7.5, text_width - (name_col_x - text_x))[:1]:
