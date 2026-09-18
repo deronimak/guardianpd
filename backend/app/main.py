@@ -18,6 +18,7 @@ from app.api.routes import (
     parent,
     parent_auth,
     platform_auth,
+    school_profile,
     schools,
     staff_accounts,
     students,
@@ -51,6 +52,7 @@ app.include_router(auth.router)
 app.include_router(parent_auth.router)
 app.include_router(parent.router)
 app.include_router(guardians.router)
+app.include_router(school_profile.router)
 app.include_router(students.router)
 app.include_router(staff_accounts.router)
 app.include_router(absences.router)

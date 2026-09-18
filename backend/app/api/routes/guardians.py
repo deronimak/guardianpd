@@ -459,6 +459,7 @@ def download_qr_credential_pdf(
         school_name=school.name,
         qr_token=credential.token,
         children_names=children_names,
+        school_logo_bytes=school.logo,
     )
 
     # Closest real signal to "printed" available — the PDF itself isn't

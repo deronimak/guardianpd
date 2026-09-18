@@ -367,6 +367,23 @@
 <main id="dashboard" style="display:none;">
   <div class="panel">
     <div class="panel-head">
+      <h2>School branding <span class="hint">POST /school/logo</span></h2>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px; margin-bottom:18px;">
+      <div id="school-logo-preview" style="width:56px; height:56px; border-radius:12px; background:var(--accent-soft); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;"></div>
+      <div>
+        <div id="school-name-display" style="font-family:var(--font-display); font-weight:700; font-size:16px;">&nbsp;</div>
+        <div style="font-size:12px; color:var(--text-faint); margin-top:2px;">Shown here and printed on guardian QR credential cards.</div>
+      </div>
+    </div>
+    <div class="row-actions">
+      <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="flex:1;" />
+      <button id="logo-upload-submit" onclick="uploadSchoolLogo()">Upload logo</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
       <h2>Add guardian &amp; children <span class="hint">POST /guardians</span></h2>
     </div>
     <div id="add-guardian-success"></div>
@@ -502,6 +519,7 @@
       renderAuthArea();
       log(`Logged in to ${slug} as ${email}.`, true);
       renderChildInputs();
+      loadSchoolProfile();
     } catch (e) {
       errorEl.textContent = `Login failed: ${e.message}`;
       errorEl.style.display = "block";
@@ -515,6 +533,58 @@
     clearToken();
     renderAuthArea();
     log("Logged out.", true);
+  }
+
+  async function loadSchoolProfile() {
+    try {
+      const profile = await apiFetch("/school/me");
+      document.getElementById("school-name-display").textContent = profile.name;
+      const preview = document.getElementById("school-logo-preview");
+      if (profile.has_logo) {
+        const response = await apiFetch("/school/logo", { raw: true });
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        preview.innerHTML = `<img src="${url}" alt="${profile.name} logo" style="width:100%; height:100%; object-fit:contain;" />`;
+      } else {
+        preview.innerHTML = `<span style="font-family:var(--font-display); font-weight:800; color:var(--accent-dark); font-size:20px;">${initials(profile.name)}</span>`;
+      }
+    } catch (e) {
+      log(`Could not load school profile: ${e.message}`, false);
+    }
+  }
+
+  async function uploadSchoolLogo() {
+    const input = document.getElementById("logo-file-input");
+    const file = input.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    const btn = document.getElementById("logo-upload-submit");
+    const originalLabel = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span>Uploading…`;
+    try {
+      // Not apiFetch: FormData needs the browser to set its own
+      // multipart boundary in Content-Type, which apiFetch's fixed
+      // "application/json" header would clobber.
+      const response = await fetch("/school/logo", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${getToken()}`, "X-School-Slug": getSlug() },
+        body: formData,
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`${response.status} ${text}`);
+      }
+      log("School logo updated.", true);
+      input.value = "";
+      await loadSchoolProfile();
+    } catch (e) {
+      log(`Logo upload failed: ${e.message}`, false);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originalLabel;
+    }
   }
 
   function renderChildInputs() {
@@ -927,6 +997,7 @@
 
   renderAuthArea();
   renderChildInputs();
+  if (getToken()) loadSchoolProfile();
 </script>
 
 </body>

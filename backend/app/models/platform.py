@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime
 from datetime import time as dt_time
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Identity, Integer, String, Time, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Identity, Integer, LargeBinary, String, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -49,6 +49,16 @@ class School(PlatformBase):
     # (ARCHITECTURE.md §4) — defaults to the school admin's email at
     # enrollment, since School has no other stored contact.
     billing_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # School-uploaded branding (POST /school/logo, School Admin only) — shown
+    # in the School Admin console header and printed on guardian QR
+    # credential cards. Stored inline as bytes rather than in object storage:
+    # this deployment has no S3/Cloudinary config and no persistent volume
+    # (Railway container, redeploy wipes local disk), and a logo is small
+    # enough (see the 2MB cap in app/api/routes/school_profile.py) that a
+    # bytea column is the simplest thing that actually survives a redeploy.
+    logo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    logo_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
 class Subscription(PlatformBase):

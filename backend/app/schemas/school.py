@@ -82,6 +82,16 @@ class SchoolDetailOut(BaseModel):
     archived_at: datetime | None = None
 
 
+class SchoolProfileOut(BaseModel):
+    """A School Admin's view of their own school — backs the School Admin
+    console header (GET /school/me). Deliberately thin: just enough to
+    render a name/logo, not the Master Admin's full SchoolDetailOut.
+    """
+
+    name: str
+    has_logo: bool
+
+
 class SchoolUpdateRequest(BaseModel):
     """Partial update — only fields actually present in the request body are
     changed (see model_dump(exclude_unset=True) in the route). `slug` is
