@@ -254,23 +254,23 @@ def _draw_back(
         pdf.drawCentredString(center_x, y, line)
         y -= 10
 
-    y -= 6
+    y -= 7
     pdf.setFillColor(BRAND_INK)
-    pdf.setFont("Helvetica", 6.5)
+    pdf.setFont("Helvetica", 8)
     instruction = "Present at the gate for scanning. If lost, report to the school office immediately."
-    for line in _wrap_to_width(pdf, instruction, "Helvetica", 6.5, text_width)[:3]:
+    for line in _wrap_to_width(pdf, instruction, "Helvetica", 8, text_width)[:3]:
         pdf.drawCentredString(center_x, y, line)
-        y -= 8.5
+        y -= 10
 
-    y -= 9
+    y -= 10
     pdf.setFillColor(BRAND_MUTED)
-    pdf.setFont("Helvetica-Bold", 6.5)
+    pdf.setFont("Helvetica-Bold", 8)
     pdf.drawCentredString(center_x, y, "Contact GuardianPD:")
-    y -= 8.5
-    pdf.setFont("Helvetica", 6)
+    y -= 10
+    pdf.setFont("Helvetica", 7.5)
     for contact_line in ("www.guardianpd.app", "info@guardianpd.app", "08032459607"):
         pdf.drawCentredString(center_x, y, contact_line)
-        y -= 7.5
+        y -= 9.5
 
 
 def generate_qr_credential_pdf(
