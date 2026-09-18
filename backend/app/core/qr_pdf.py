@@ -251,7 +251,7 @@ def _draw_back(
     y = CARD_HEIGHT - 0.34 * inch
 
     who = ", ".join(children_names) if children_names else "the enrolled child"
-    statement = f"This card verifies authorized pickup for {who} at {school_name}."
+    statement = f"This card verifies authorized pickup and drop-off for {who} at {school_name}."
     pdf.setFillColor(BRAND_PURPLE)
     pdf.setFont("Helvetica-Bold", 8)
     for line in _wrap_to_width(pdf, statement, "Helvetica-Bold", 8, text_width)[:4]:
