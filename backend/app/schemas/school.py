@@ -80,6 +80,7 @@ class SchoolDetailOut(BaseModel):
     guardian_count: int
     qr_printed_count: int
     archived_at: datetime | None = None
+    has_logo: bool = False
 
 
 class SchoolProfileOut(BaseModel):

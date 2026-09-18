@@ -7,9 +7,11 @@ bootstrap an account.
 """
 
 import datetime as dt
+import io
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from PIL import Image, UnidentifiedImageError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -47,6 +49,8 @@ from app.schemas.student import StudentOut, StudentUpdateRequest
 router = APIRouter(prefix="/platform/schools", tags=["platform"], dependencies=[Depends(require_platform_staff)])
 
 _BILLING_PERIOD_DAYS = 30
+_ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+_MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2MB — plenty for a logo, small enough to sit in a DB row.
 
 
 def _get_school_or_404(school_id: uuid.UUID, platform_db: Session) -> School:
@@ -157,6 +161,7 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
         "guardian_count": guardian_count,
         "qr_printed_count": qr_printed_count,
         "archived_at": school.archived_at,
+        "has_logo": school.logo is not None,
     }
 
 
@@ -200,6 +205,61 @@ def unarchive_school_record(school_id: uuid.UUID, platform_db: Session = Depends
     platform_db.commit()
     platform_db.refresh(school)
     return school
+
+
+@router.get("/{school_id}/logo")
+def get_school_logo(school_id: uuid.UUID, platform_db: Session = Depends(get_platform_db)) -> Response:
+    """Read-only and also reachable by the school's own console (see
+    GET /school/logo in school_profile.py) — only the Master Admin can set
+    or remove it below, but the School Admin console still needs to
+    display whatever the Master Admin has uploaded.
+    """
+    school = _get_school_or_404(school_id, platform_db)
+    if school.logo is None:
+        raise HTTPException(status_code=404, detail="This school hasn't uploaded a logo")
+    return Response(content=school.logo, media_type=school.logo_content_type or "application/octet-stream")
+
+
+@router.post("/{school_id}/logo")
+async def upload_school_logo(
+    school_id: uuid.UUID,
+    file: UploadFile = File(...),
+    platform_db: Session = Depends(get_platform_db),
+) -> dict:
+    school = _get_school_or_404(school_id, platform_db)
+
+    if file.content_type not in _ALLOWED_LOGO_TYPES:
+        raise HTTPException(status_code=422, detail="Logo must be a PNG, JPEG, or WEBP image")
+
+    data = await file.read()
+    if len(data) > _MAX_LOGO_BYTES:
+        raise HTTPException(status_code=422, detail="Logo must be smaller than 2MB")
+
+    # Belt-and-braces beyond the client-supplied content_type: actually
+    # decode the bytes. A corrupt/truncated upload that only fails this
+    # check once it's already stored would 500 every QR credential PDF for
+    # this school from then on (app/core/qr_pdf.py embeds it on every
+    # download) — worth the decode cost to fail here instead.
+    try:
+        Image.open(io.BytesIO(data)).load()
+    except UnidentifiedImageError:
+        raise HTTPException(status_code=422, detail="That file isn't a readable image")
+    except OSError:
+        raise HTTPException(status_code=422, detail="That image file is corrupted or incomplete")
+
+    school.logo = data
+    school.logo_content_type = file.content_type
+    platform_db.commit()
+    return {"ok": True}
+
+
+@router.delete("/{school_id}/logo")
+def delete_school_logo(school_id: uuid.UUID, platform_db: Session = Depends(get_platform_db)) -> dict:
+    school = _get_school_or_404(school_id, platform_db)
+    school.logo = None
+    school.logo_content_type = None
+    platform_db.commit()
+    return {"ok": True}
 
 
 def _tenant_session_for(school: School):

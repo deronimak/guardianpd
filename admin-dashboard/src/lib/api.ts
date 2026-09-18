@@ -47,7 +47,11 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   const { skipUnauthorizedHandler, ...fetchOptions } = options;
   const token = getToken();
   const headers = new Headers(fetchOptions.headers);
-  if (!headers.has("Content-Type") && fetchOptions.body) headers.set("Content-Type", "application/json");
+  // A FormData body (file uploads) needs the browser to set its own
+  // multipart boundary in Content-Type — forcing "application/json" onto
+  // it here would silently break the upload.
+  const isFormData = typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+  if (!headers.has("Content-Type") && fetchOptions.body && !isFormData) headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const response = await fetch(path, { ...fetchOptions, headers });

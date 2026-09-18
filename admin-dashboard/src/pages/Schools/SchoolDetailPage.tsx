@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -16,6 +16,7 @@ import {
   Minus,
   Plus,
   FileClock,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Card, CardBody, CardHeader } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
@@ -35,12 +36,14 @@ import {
   useDeactivateSubscription,
   useReactivateSubscription,
   useUpdateSubscription,
+  useUploadSchoolLogo,
+  useDeleteSchoolLogo,
   useAuditLog,
 } from "../../api/schools";
 import { useInvoices, useCreateManualInvoice } from "../../api/invoices";
 import { useToast } from "../../context/ToastContext";
 import { formatDate, formatNaira, formatRelativeTime } from "../../lib/format";
-import { ApiError } from "../../lib/api";
+import { ApiError, getToken } from "../../lib/api";
 import type { SubscriptionStatus } from "../../types";
 
 const SUBSCRIPTION_TONE: Record<SubscriptionStatus, "success" | "info" | "danger"> = {
@@ -65,6 +68,10 @@ export function SchoolDetailPage() {
   const reactivate = useReactivateSubscription(schoolId ?? "");
   const updateSubscription = useUpdateSubscription(schoolId ?? "");
   const createManualInvoice = useCreateManualInvoice(schoolId ?? "");
+  const uploadLogo = useUploadSchoolLogo(schoolId ?? "");
+  const deleteLogo = useDeleteSchoolLogo(schoolId ?? "");
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   const [confirmAction, setConfirmAction] = useState<"deactivate" | "reactivate" | "archive" | "unarchive" | null>(
     null
@@ -80,6 +87,31 @@ export function SchoolDetailPage() {
 
   const [invoiceConfirmOpen, setInvoiceConfirmOpen] = useState(false);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+
+  // The logo endpoint returns raw image bytes behind the same bearer auth
+  // as everything else here, so a plain <img src> (which sends no auth
+  // header) can't load it directly — fetch it as a blob and hand the
+  // <img> an object URL instead, same approach the School Admin console
+  // uses for its own read-only copy of this endpoint.
+  useEffect(() => {
+    if (!school?.has_logo || !schoolId) {
+      setLogoUrl(null);
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    fetch(`/platform/schools/${schoolId}/logo`, { headers: { Authorization: `Bearer ${getToken()}` } })
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (cancelled || !blob) return;
+        objectUrl = URL.createObjectURL(blob);
+        setLogoUrl(objectUrl);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [school?.has_logo, schoolId]);
 
   const nextDueInvoice = useMemo(() => {
     if (!invoices) return null;
@@ -161,6 +193,27 @@ export function SchoolDetailPage() {
         });
         setInvoiceConfirmOpen(false);
       },
+    });
+  };
+
+  const handleLogoFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    uploadLogo.mutate(file, {
+      onSuccess: () => showToast({ kind: "success", title: "Logo updated", description: `${school.name}'s logo was updated.` }),
+      onError: (err) =>
+        showToast({
+          kind: "error",
+          title: "Couldn't upload logo",
+          description: err instanceof ApiError ? err.message : "Something went wrong.",
+        }),
+    });
+  };
+
+  const handleRemoveLogo = () => {
+    deleteLogo.mutate(undefined, {
+      onSuccess: () => showToast({ kind: "info", title: "Logo removed", description: `${school.name}'s logo was removed.` }),
     });
   };
 
@@ -453,6 +506,46 @@ export function SchoolDetailPage() {
               <div className="flex items-center gap-2.5 text-sm text-gray-600">
                 <Calendar className="size-4 text-gray-400" />
                 Timezone: {school.timezone}
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="School logo" />
+            <CardBody className="space-y-3.5">
+              <div className="flex items-center gap-3">
+                <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gray-100">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt={`${school.name} logo`} className="size-full object-contain" />
+                  ) : (
+                    <ImageIcon className="size-6 text-gray-400" />
+                  )}
+                </div>
+                <p className="text-sm text-gray-500">
+                  Shown in the School Admin console and printed on guardian QR credential cards.
+                </p>
+              </div>
+              <input
+                ref={logoFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={handleLogoFileChange}
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  loading={uploadLogo.isPending}
+                  onClick={() => logoFileInputRef.current?.click()}
+                >
+                  {school.has_logo ? "Replace logo" : "Upload logo"}
+                </Button>
+                {school.has_logo && (
+                  <Button variant="dangerGhost" size="sm" loading={deleteLogo.isPending} onClick={handleRemoveLogo}>
+                    Remove
+                  </Button>
+                )}
               </div>
             </CardBody>
           </Card>

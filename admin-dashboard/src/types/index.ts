@@ -46,6 +46,7 @@ export interface SchoolDetail {
   guardian_count: number;
   qr_printed_count: number;
   archived_at: string | null;
+  has_logo: boolean;
 }
 
 export interface SubscriptionUpdateRequest {

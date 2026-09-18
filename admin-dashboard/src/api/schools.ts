@@ -114,6 +114,32 @@ export function useUpdateSubscription(id: string) {
   });
 }
 
+export function useUploadSchoolLogo(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return apiFetch<{ ok: boolean }>(`/platform/schools/${id}/logo`, { method: "POST", body: formData });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schools"] });
+      queryClient.invalidateQueries({ queryKey: schoolKey(id) });
+    },
+  });
+}
+
+export function useDeleteSchoolLogo(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean }>(`/platform/schools/${id}/logo`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schools"] });
+      queryClient.invalidateQueries({ queryKey: schoolKey(id) });
+    },
+  });
+}
+
 export function useAuditLog(schoolId: string | undefined) {
   return useQuery({
     queryKey: ["audit-log", schoolId ?? ""],
