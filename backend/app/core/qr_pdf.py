@@ -230,6 +230,16 @@ def _draw_back(
     school_name: str,
     children_names: list[str] | None,
 ) -> None:
+    # PVC card printers/duplex trays typically flip the card end-over-end
+    # (top edge to bottom edge) between sides, not left-to-right like a
+    # book page. Drawing the back in the same upright orientation as the
+    # front comes out upside-down once that physical flip happens, so the
+    # whole page is pre-rotated 180° about its own center here — everything
+    # below draws exactly as if this were a normal upright page.
+    pdf.saveState()
+    pdf.translate(CARD_WIDTH, CARD_HEIGHT)
+    pdf.rotate(180)
+
     pdf.setFillColor(colors.white)
     pdf.rect(0, 0, CARD_WIDTH, CARD_HEIGHT, fill=1, stroke=0)
     pdf.setStrokeColor(BRAND_PURPLE)
@@ -265,6 +275,8 @@ def _draw_back(
     for contact_line in ("www.guardianpd.app", "info@guardianpd.app", "08032459607"):
         pdf.drawCentredString(center_x, y, contact_line)
         y -= 9.5
+
+    pdf.restoreState()
 
 
 def generate_qr_credential_pdf(
