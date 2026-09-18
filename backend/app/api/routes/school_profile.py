@@ -5,7 +5,10 @@ their own school's name/logo, used by the School Admin console header
 cards (app/core/qr_pdf.py).
 """
 
+import io
+
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from PIL import Image, UnidentifiedImageError
 
 from app.api.deps import get_current_staff, get_school, require_school_admin
 from app.db.platform import get_platform_db
@@ -48,6 +51,18 @@ async def upload_school_logo(
     data = await file.read()
     if len(data) > _MAX_LOGO_BYTES:
         raise HTTPException(status_code=422, detail="Logo must be smaller than 2MB")
+
+    # Belt-and-braces beyond the client-supplied content_type: actually
+    # decode the bytes. A corrupt/truncated upload that only fails this
+    # check once it's already stored would 500 every QR credential PDF for
+    # this school from then on (app/core/qr_pdf.py embeds it on every
+    # download) — worth the decode cost to fail here instead.
+    try:
+        Image.open(io.BytesIO(data)).load()
+    except UnidentifiedImageError:
+        raise HTTPException(status_code=422, detail="That file isn't a readable image")
+    except OSError:
+        raise HTTPException(status_code=422, detail="That image file is corrupted or incomplete")
 
     school.logo = data
     school.logo_content_type = file.content_type
