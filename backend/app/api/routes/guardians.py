@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_staff, get_school, get_tenant_db, require_school_admin
+from app.api.deps import get_current_staff, get_school, get_tenant_db, require_active_subscription, require_school_admin
 from app.core.audit import record_audit, resolve_staff_actor_label
 from app.core.email import send_email
 from app.core.qr_pdf import generate_qr_credential_pdf
@@ -385,7 +385,7 @@ def resend_activation(
 @router.get("/lookup", response_model=GuardianLookupOut)
 def lookup_guardian_by_qr(
     token: str,
-    school: School = Depends(get_school),
+    school: School = Depends(require_active_subscription),
     tenant_db: Session = Depends(get_tenant_db),
 ) -> dict:
     """Powers the staff scanner's student picker (ARCHITECTURE.md §6): after
@@ -394,6 +394,13 @@ def lookup_guardian_by_qr(
     this is that lookup, done before POST /attendance/scan rather than by
     listing every student at the school. Reachable by School Staff *and*
     School Admin (unlike the routes above) since scanning is staff's job.
+
+    Gated the same way as POST /attendance/scan (require_active_subscription,
+    not just get_school) — this used to be the one crack in the subscription
+    gate: a suspended school couldn't record an event, but staff could still
+    scan a code and see the guardian's name and children here first. Now a
+    suspended school is refused at the very first step, before any guardian
+    data is ever returned.
 
     Mirrors the same signature/revocation checks as the scan endpoint, but
     this alone is NOT an attendance record — POST /attendance/scan

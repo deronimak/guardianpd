@@ -70,6 +70,13 @@ def test_suspended_subscription_blocks_scanning(
     deactivate = client.post(f"/platform/schools/{school_id}/deactivate", headers=platform_auth_headers)
     assert deactivate.status_code == 200
 
+    # The lookup that powers the scanner's student picker must refuse a
+    # suspended school too — this used to be ungated, so staff could still
+    # see the guardian's name and children even though POST /attendance/scan
+    # would go on to reject recording the event.
+    lookup = client.get("/guardians/lookup", params={"token": qr_token}, headers=school_staff_headers)
+    assert lookup.status_code == 402
+
     scan = client.post(
         "/attendance/scan",
         json={"token": qr_token, "student_id": student_id, "type": "drop_off"},
@@ -79,6 +86,9 @@ def test_suspended_subscription_blocks_scanning(
 
     reactivate = client.post(f"/platform/schools/{school_id}/reactivate", headers=platform_auth_headers)
     assert reactivate.status_code == 200
+
+    lookup_again = client.get("/guardians/lookup", params={"token": qr_token}, headers=school_staff_headers)
+    assert lookup_again.status_code == 200
 
     scan_again = client.post(
         "/attendance/scan",
