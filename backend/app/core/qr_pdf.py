@@ -242,7 +242,7 @@ def _draw_back(
 
     pdf.setFillColor(colors.white)
     pdf.rect(0, 0, CARD_WIDTH, CARD_HEIGHT, fill=1, stroke=0)
-    pdf.setStrokeColor(BRAND_PURPLE)
+    pdf.setStrokeColor(colors.black)
     pdf.setLineWidth(1.4)
     pdf.roundRect(_MARGIN * 0.6, _MARGIN * 0.6, CARD_WIDTH - _MARGIN * 1.2, CARD_HEIGHT - _MARGIN * 1.2, 8, stroke=1, fill=0)
 
@@ -252,14 +252,14 @@ def _draw_back(
 
     who = ", ".join(children_names) if children_names else "the enrolled child"
     statement = f"This card verifies authorized pickup and drop-off for {who} at {school_name}."
-    pdf.setFillColor(BRAND_PURPLE)
+    pdf.setFillColor(colors.black)
     pdf.setFont("Helvetica-Bold", 8)
     for line in _wrap_to_width(pdf, statement, "Helvetica-Bold", 8, text_width)[:4]:
         pdf.drawCentredString(center_x, y, line)
         y -= 10
 
     y -= 7
-    pdf.setFillColor(BRAND_INK)
+    pdf.setFillColor(colors.black)
     pdf.setFont("Helvetica", 8)
     instruction = "Present at the gate for scanning. If lost, report to the school office immediately."
     for line in _wrap_to_width(pdf, instruction, "Helvetica", 8, text_width)[:3]:
@@ -267,7 +267,7 @@ def _draw_back(
         y -= 10
 
     y -= 10
-    pdf.setFillColor(BRAND_MUTED)
+    pdf.setFillColor(colors.black)
     pdf.setFont("Helvetica-Bold", 8)
     pdf.drawCentredString(center_x, y, "Contact GuardianPD:")
     y -= 10
