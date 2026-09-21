@@ -273,6 +273,7 @@
   .attendance-dot.pick_up { background: var(--success); }
   .day-table-row .flag-tag { color: var(--danger); font-weight: 600; }
   .day-table-row .muted { color: var(--text-faint); }
+  .day-table-row .scanned-by { display: block; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
 
   #log {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -779,7 +780,8 @@
       if (!ev) return `<span class="muted">${missingLabel}</span>`;
       if (ev.flagged) return `<span class="flag-tag">${escapeAttr(ev.flag_reason || "Flagged")}</span>`;
       const time = new Date(ev.timestamp).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-      return `<span><span class="attendance-dot ${ev.type}"></span>${time}</span>`;
+      const staffLine = ev.scanned_by ? `<span class="scanned-by">by ${escapeAttr(ev.scanned_by)}</span>` : "";
+      return `<span><span class="attendance-dot ${ev.type}"></span>${time}${staffLine}</span>`;
     };
     const rows = names
       .map((name) => {
