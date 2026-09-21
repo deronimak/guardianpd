@@ -16,7 +16,9 @@ still redundant work worth noting if the deployment ever scales out).
 import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
+from app.jobs.backup_databases import backup_all_databases
 from app.jobs.generate_invoices import generate_invoices_for_all_schools, mark_overdue_invoices
 
 logger = logging.getLogger(__name__)
@@ -34,11 +36,22 @@ def _run_mark_overdue() -> None:
     logger.info("scheduled mark_overdue_invoices: marked %d invoice(s) overdue", marked)
 
 
+def _run_backup_databases() -> None:
+    summary = backup_all_databases()
+    logger.info("scheduled backup_databases: %s", summary)
+
+
 def start_scheduler() -> None:
     _scheduler.add_job(_run_generate_invoices, "interval", hours=6, id="generate_invoices", replace_existing=True)
     _scheduler.add_job(_run_mark_overdue, "interval", hours=6, id="mark_overdue_invoices", replace_existing=True)
+    # A fixed off-peak UTC hour rather than "interval" — a backup landing
+    # at a predictable time each day makes "did last night's backup run?"
+    # a sane question to ask when checking up on this.
+    _scheduler.add_job(
+        _run_backup_databases, CronTrigger(hour=3, minute=0), id="backup_databases", replace_existing=True
+    )
     _scheduler.start()
-    logger.info("billing scheduler started: generate_invoices + mark_overdue_invoices every 6 hours")
+    logger.info("scheduler started: generate_invoices + mark_overdue_invoices every 6h, backup_databases daily 03:00 UTC")
 
 
 def stop_scheduler() -> None:

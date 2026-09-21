@@ -2,6 +2,15 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# postgresql-client provides pg_dump, used by app/jobs/backup_databases.py.
+# Debian trixie's default client (v17) dumping a v16 server (Railway's
+# Postgres image) is a supported cross-version combination for a plain
+# schema+data dump — pg_dump only requires special version-matching for
+# server-specific catalog features this app's schema doesn't use.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

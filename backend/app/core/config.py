@@ -56,5 +56,19 @@ class Settings(BaseSettings):
     paystack_secret_key: str = ""
     paystack_callback_url: str = "https://example.com/billing/callback"
 
+    # Off-site database backups (app/jobs/backup_databases.py) — an
+    # S3-compatible bucket (Cloudflare R2 by default) so a Railway-side
+    # incident, a bad migration, or an accidental DROP can't take out both
+    # the live data and its only backup at once. Left blank by default so
+    # the job is a clear no-op (logs and returns) rather than crashing an
+    # install that hasn't set this up. region_name defaults to "auto",
+    # which is what R2 itself expects — override it for real AWS S3.
+    backup_s3_endpoint_url: str = ""
+    backup_s3_region: str = "auto"
+    backup_s3_access_key_id: str = ""
+    backup_s3_secret_access_key: str = ""
+    backup_s3_bucket: str = ""
+    backup_retention_days: int = 30
+
 
 settings = Settings()
