@@ -33,6 +33,34 @@ export class ApiError extends Error {
   }
 }
 
+/** FastAPI's `detail` is a plain string for hand-raised HTTPExceptions, but
+ * a list of `{loc, msg, type}` objects for a 422 validation error —
+ * `String(detail)` on that list produces the literal text "[object
+ * Object]", which is what a bare `String()` call here used to surface to
+ * users verbatim. */
+function extractErrorDetail(body: unknown, fallback: string): string {
+  if (!body || typeof body !== "object" || !("detail" in body)) return fallback;
+  const detail = (body as { detail: unknown }).detail;
+
+  if (typeof detail === "string") return detail;
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          const loc = Array.isArray((item as { loc?: unknown }).loc)
+            ? (item as { loc: unknown[] }).loc.filter((part) => part !== "body").join(".")
+            : "";
+          return loc ? `${loc}: ${(item as { msg: unknown }).msg}` : String((item as { msg: unknown }).msg);
+        }
+        return String(item);
+      })
+      .join("; ");
+  }
+
+  return typeof detail === "object" ? JSON.stringify(detail) : String(detail);
+}
+
 interface ApiFetchOptions extends RequestInit {
   /** Some endpoints (e.g. change-password) return 401 for a business-logic
    * reason ("current password is incorrect") that has nothing to do with
@@ -69,11 +97,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   }
 
   if (!response.ok) {
-    const detail =
-      body && typeof body === "object" && "detail" in body
-        ? String((body as { detail: unknown }).detail)
-        : response.statusText;
-    throw new ApiError(response.status, detail);
+    throw new ApiError(response.status, extractErrorDetail(body, response.statusText));
   }
 
   return body as T;
