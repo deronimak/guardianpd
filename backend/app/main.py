@@ -18,6 +18,7 @@ from app.api.routes import (
     parent,
     parent_auth,
     platform_auth,
+    pre_enrollment,
     school_profile,
     schools,
     staff_accounts,
@@ -58,6 +59,7 @@ app.include_router(staff_accounts.router)
 app.include_router(absences.router)
 app.include_router(attendance.router)
 app.include_router(welfare.router)
+app.include_router(pre_enrollment.router)
 
 
 @app.on_event("startup")
@@ -131,6 +133,13 @@ app.mount(
 # server-to-server call, not this page — it's just a human-readable landing.
 _STATIC_BILLING_DIR = os.path.join(os.path.dirname(__file__), "static", "billing_thank_you")
 app.mount("/billing/thank-you", StaticFiles(directory=_STATIC_BILLING_DIR, html=True), name="billing_thank_you")
+
+# Pre-enrollment inquiry page for prospective schools — posts to
+# POST /pre-enrollment-inquiries (app/api/routes/pre_enrollment.py). Linked
+# from the marketing site and referenced as the "web page" version of the
+# standalone PDF pre-enrollment form.
+_STATIC_PRE_ENROLLMENT_DIR = os.path.join(os.path.dirname(__file__), "static", "pre_enrollment")
+app.mount("/enroll", StaticFiles(directory=_STATIC_PRE_ENROLLMENT_DIR, html=True), name="pre_enrollment")
 
 # Public marketing site — Paystack's merchant verification requires an
 # active website describing the business, separate from the API/consoles

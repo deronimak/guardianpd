@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pre-Enrollment — GuardianPD</title>
+<meta name="description" content="Bring GuardianPD to your school. Tell us about your school and when you'd like to be fully enrolled." />
+<style>
+  :root {
+    --purple: #6A4FE0;
+    --purple-dark: #4E39B0;
+    --text: #1a1a2e;
+    --muted: #5a5a6e;
+    --bg: #fdfbff;
+    --panel: #f4f2fc;
+    --border: #e6e1f5;
+    --danger: #C6394F;
+    --success: #1F8A4C;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  a { color: var(--purple); }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+
+  header { border-bottom: 1px solid var(--border); background: var(--bg); }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; max-width: 1040px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; text-decoration: none; color: var(--text); }
+  .brand .badge {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--purple); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+  }
+  .contact-line { font-size: 0.85rem; color: var(--muted); }
+  .contact-line a { color: var(--muted); text-decoration: none; }
+  .contact-line a:hover { color: var(--purple); }
+
+  main { padding: 48px 24px 72px; }
+  h1 { font-size: 1.8rem; margin: 0 0 10px; }
+  .lead { color: var(--muted); margin: 0 0 32px; }
+
+  form { display: flex; flex-direction: column; gap: 20px; }
+  fieldset { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 20px; }
+  legend {
+    padding: 0; margin-bottom: -4px;
+    font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em;
+    color: var(--purple); text-transform: uppercase;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  label { display: flex; flex-direction: column; gap: 6px; font-size: 0.88rem; color: var(--muted); }
+  input, textarea {
+    font: inherit; font-size: 0.95rem; color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; background: #fff;
+  }
+  input:focus, textarea:focus { outline: 2px solid var(--purple); outline-offset: 1px; }
+  textarea { resize: vertical; min-height: 70px; font-family: inherit; }
+
+  .hr { border-top: 1px solid var(--border); margin: 4px 0; }
+
+  button[type="submit"] {
+    background: var(--purple); color: #fff; border: none;
+    padding: 13px 26px; border-radius: 999px; font-weight: 600; font-size: 0.95rem;
+    cursor: pointer; align-self: flex-start;
+  }
+  button[type="submit"]:hover { background: var(--purple-dark); }
+  button[type="submit"]:disabled { opacity: 0.6; cursor: default; }
+
+  .status {
+    font-size: 0.9rem; padding: 12px 14px; border-radius: 10px;
+    display: none; background: #FBEAEE; color: var(--danger);
+  }
+
+  .success-panel { text-align: center; padding: 40px 0; }
+  .success-panel .icon {
+    width: 56px; height: 56px; border-radius: 50%; background: var(--panel); color: var(--success);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 18px; font-size: 1.6rem;
+  }
+  .success-panel h2 { margin: 0 0 8px; font-size: 1.3rem; }
+  .success-panel p { color: var(--muted); margin: 0; }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 30px 24px;
+    text-align: center; color: var(--muted); font-size: 0.85rem;
+  }
+  footer a { color: var(--muted); text-decoration: none; margin: 0 8px; }
+  footer a:hover { color: var(--purple); }
+
+  @media (max-width: 560px) {
+    .row { grid-template-columns: 1fr; }
+    header .wrap { flex-direction: column; align-items: flex-start; gap: 6px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="/"><span class="badge">PD</span> GuardianPD</a>
+    <div class="contact-line">
+      <a href="mailto:info@guardianpd.app">info@guardianpd.app</a> &middot; 08148247438
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="form-panel">
+    <h1>Bring GuardianPD to your school</h1>
+    <p class="lead">
+      Tell us about your school below and our team will follow up to schedule your enrollment.
+    </p>
+
+    <div id="status" class="status" role="alert"></div>
+
+    <form id="pre-enrollment-form">
+      <fieldset>
+        <legend>School information</legend>
+        <label>
+          School name
+          <input type="text" name="school_name" required maxlength="255" />
+        </label>
+        <label>
+          School address
+          <input type="text" name="school_address" required maxlength="500" />
+        </label>
+      </fieldset>
+
+      <div class="hr"></div>
+
+      <fieldset>
+        <legend>Contact person</legend>
+        <div class="row">
+          <label>
+            Full name
+            <input type="text" name="contact_name" required maxlength="255" />
+          </label>
+          <label>
+            Email address
+            <input type="email" name="contact_email" required maxlength="255" />
+          </label>
+        </div>
+        <label>
+          WhatsApp number
+          <input type="tel" name="contact_whatsapp" required maxlength="30" placeholder="e.g. 0801 234 5678" />
+        </label>
+      </fieldset>
+
+      <div class="hr"></div>
+
+      <fieldset>
+        <legend>About your school</legend>
+        <label>
+          Estimated number of currently active parents
+          <input type="text" name="active_parents_estimate" required maxlength="100" placeholder="e.g. 300" />
+        </label>
+      </fieldset>
+
+      <div class="hr"></div>
+
+      <fieldset>
+        <legend>Enrollment timing</legend>
+        <label>
+          What date would you like your school to be fully enrolled and live on GuardianPD?
+          <input type="date" name="desired_enrollment_date" required />
+        </label>
+        <label>
+          Anything else we should know? (optional)
+          <textarea name="notes" maxlength="2000"></textarea>
+        </label>
+      </fieldset>
+
+      <button type="submit" id="submit-btn">Submit inquiry</button>
+    </form>
+  </div>
+
+  <div id="success-panel" class="success-panel" style="display:none">
+    <div class="icon">&#10003;</div>
+    <h2>Thank you!</h2>
+    <p>We've received your inquiry and will follow up shortly to schedule your school's enrollment.</p>
+  </div>
+</main>
+
+<footer>
+  GuardianPD &mdash; School pickup/drop-off attendance system.
+  <div style="margin-top:8px">
+    <a href="/privacy/">Privacy policy</a>
+    <a href="/terms/">Terms of service</a>
+  </div>
+</footer>
+
+<script>
+  const form = document.getElementById("pre-enrollment-form");
+  const statusEl = document.getElementById("status");
+  const submitBtn = document.getElementById("submit-btn");
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    statusEl.style.display = "none";
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting…";
+
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    if (!payload.notes) delete payload.notes;
+
+    try {
+      const response = await fetch("/pre-enrollment-inquiries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const detail = body && body.detail ? body.detail : "Something went wrong. Please try again.";
+        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      }
+
+      document.getElementById("form-panel").style.display = "none";
+      document.getElementById("success-panel").style.display = "block";
+    } catch (err) {
+      statusEl.textContent = err.message || "Something went wrong. Please try again.";
+      statusEl.style.display = "block";
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit inquiry";
+    }
+  });
+</script>
+
+</body>
+</html>

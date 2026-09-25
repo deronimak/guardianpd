@@ -158,3 +158,29 @@ class PlatformStaffUser(PlatformBase):
     email: Mapped[str] = mapped_column(String(255), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(50), default="ops")
+
+
+class PreEnrollmentInquiry(PlatformBase):
+    """A prospective school's interest form (public marketing site + PDF form),
+    submitted before any School/tenant DB exists — deliberately unrelated to
+    the School model, since enrolling that school later is a separate,
+    staff-driven step (POST /platform/schools), not automated from this.
+    """
+
+    __tablename__ = "pre_enrollment_inquiries"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_name: Mapped[str] = mapped_column(String(255))
+    school_address: Mapped[str] = mapped_column(String(500))
+    contact_name: Mapped[str] = mapped_column(String(255))
+    contact_email: Mapped[str] = mapped_column(String(255))
+    contact_whatsapp: Mapped[str] = mapped_column(String(30))
+    # Free text, not Integer — this is a rough estimate a prospect types in
+    # (e.g. "about 300", "200-250"), not a value the app should validate or
+    # compute against.
+    active_parents_estimate: Mapped[str] = mapped_column(String(100))
+    # Free text for the same reason — a prospect's own typed answer, not
+    # parsed into a real date server-side.
+    desired_enrollment_date: Mapped[str] = mapped_column(String(100))
+    notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
