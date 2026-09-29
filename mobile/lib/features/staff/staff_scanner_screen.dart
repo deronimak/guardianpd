@@ -21,6 +21,10 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
   String? _pendingQrToken;
   String? _guardianId;
   String? _guardianName;
+  // School Admin-set visibility flag (see backend's GuardianLookupOut) —
+  // shown to staff here so they can act on it in person, never used to
+  // disable Record/Record all below.
+  bool _feesOutstanding = false;
   List<Map<String, dynamic>>? _students;
   String _type = 'drop_off';
 
@@ -37,6 +41,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
       _status = 'Looking up guardian...';
       _guardianId = null;
       _guardianName = null;
+      _feesOutstanding = false;
       _students = null;
     });
     try {
@@ -46,6 +51,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
         _pendingQrToken = qrToken;
         _guardianId = result['guardian_id'] as String;
         _guardianName = result['guardian_name'] as String;
+        _feesOutstanding = result['fees_outstanding'] as bool? ?? false;
         _students = students;
         _status = students.isEmpty
             ? '${result['guardian_name']} is not authorized for any student here'
@@ -84,6 +90,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
       _pendingQrToken = null;
       _guardianId = null;
       _guardianName = null;
+      _feesOutstanding = false;
       _students = null;
     });
   }
@@ -106,6 +113,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
           _pendingQrToken = null;
           _guardianId = null;
           _guardianName = null;
+          _feesOutstanding = false;
           _students = null;
         });
       }
@@ -170,7 +178,28 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(_guardianName!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        Row(
+          children: [
+            Flexible(
+              child: Text(_guardianName!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            ),
+            if (_feesOutstanding) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Text(
+                  'Fees outstanding',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.red.shade700),
+                ),
+              ),
+            ],
+          ],
+        ),
         Text(_status, style: const TextStyle(color: Colors.black54)),
         const SizedBox(height: 12),
         SegmentedButton<String>(
@@ -206,6 +235,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
             _pendingQrToken = null;
             _guardianId = null;
             _guardianName = null;
+            _feesOutstanding = false;
             _students = null;
             _status = "Point the camera at a guardian's QR code";
           }),
