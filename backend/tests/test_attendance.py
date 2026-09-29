@@ -39,6 +39,35 @@ def test_lookup_and_scan_drop_off_succeeds(client, school_admin_headers, school_
     assert body["flagged"] is False
 
 
+def test_fees_outstanding_flag_is_surfaced_but_never_blocks_the_scan(client, school_admin_headers, school_staff_headers):
+    """The whole point of this flag (see app/models/tenant.py's
+    Guardian.fees_outstanding) is that a School Admin can see it and handle
+    fee collection their own way, without the app itself ever refusing a
+    legitimate guardian's pickup/drop-off over it."""
+    qr_token, student_id = _create_guardian(client, school_admin_headers, "Kid Owing Fees")
+
+    lookup_before = client.get("/guardians/lookup", params={"token": qr_token}, headers=school_staff_headers)
+    guardian_id = lookup_before.json()["guardian_id"]
+    assert lookup_before.json()["fees_outstanding"] is False
+
+    flag_resp = client.patch(
+        f"/guardians/{guardian_id}", json={"fees_outstanding": True}, headers=school_admin_headers
+    )
+    assert flag_resp.status_code == 200, flag_resp.text
+
+    lookup_after = client.get("/guardians/lookup", params={"token": qr_token}, headers=school_staff_headers)
+    assert lookup_after.status_code == 200
+    assert lookup_after.json()["fees_outstanding"] is True
+
+    scan = client.post(
+        "/attendance/scan",
+        json={"token": qr_token, "student_id": student_id, "type": "pick_up"},
+        headers=school_staff_headers,
+    )
+    assert scan.status_code == 200, scan.text
+    assert scan.json()["status"] == "recorded"
+
+
 def test_scan_rejects_invalid_token(client, school_staff_headers):
     resp = client.post(
         "/attendance/scan",

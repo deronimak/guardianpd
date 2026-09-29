@@ -189,6 +189,7 @@ def search_guardians(query: str | None = None, tenant_db: Session = Depends(get_
             "name": g.name,
             "email": g.email,
             "phone": g.phone,
+            "fees_outstanding": g.fees_outstanding,
             "children": children_by_guardian[g.id],
         }
         for g in guardians
@@ -300,7 +301,14 @@ def update_guardian(
         .order_by(Student.name)
         .all()
     )
-    return {"id": guardian.id, "name": guardian.name, "email": guardian.email, "phone": guardian.phone, "children": children}
+    return {
+        "id": guardian.id,
+        "name": guardian.name,
+        "email": guardian.email,
+        "phone": guardian.phone,
+        "fees_outstanding": guardian.fees_outstanding,
+        "children": children,
+    }
 
 
 @router.delete("/{guardian_id}", status_code=204, dependencies=[Depends(require_school_admin)])
@@ -406,6 +414,12 @@ def lookup_guardian_by_qr(
     this alone is NOT an attendance record — POST /attendance/scan
     independently re-verifies authorization for whichever student staff
     picks, so a stale/mismatched lookup result can't be used to bypass it.
+
+    fees_outstanding is a School Admin-set visibility flag, not an
+    authorization check — it never blocks the lookup or the scan itself,
+    it's only surfaced here so staff can see it and handle collection
+    however the school normally does, without turning the gate into a
+    lockout over an unrelated fee dispute.
     """
     decoded = verify_qr_token(token)
     if decoded is None or decoded.get("sid") != str(school.id):
@@ -425,7 +439,12 @@ def lookup_guardian_by_qr(
         .filter(GuardianStudentLink.guardian_id == guardian.id, GuardianStudentLink.is_authorized_pickup)
         .all()
     )
-    return {"guardian_id": guardian.id, "guardian_name": guardian.name, "students": students}
+    return {
+        "guardian_id": guardian.id,
+        "guardian_name": guardian.name,
+        "fees_outstanding": guardian.fees_outstanding,
+        "students": students,
+    }
 
 
 @router.get("/{guardian_id}/qr-credential.pdf", dependencies=[Depends(require_school_admin)])

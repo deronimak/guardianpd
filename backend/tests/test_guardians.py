@@ -119,6 +119,33 @@ def test_update_guardian_name_and_phone(client, school_admin_headers):
     assert len(body["children"]) == 2
 
 
+def test_new_guardian_defaults_to_fees_not_outstanding(client, school_admin_headers):
+    create_resp = client.post("/guardians", json=_guardian_payload(name="Fresh Guardian"), headers=school_admin_headers)
+    assert create_resp.status_code == 201
+
+    resp = client.get("/guardians", params={"query": "Fresh Guardian"}, headers=school_admin_headers)
+    assert resp.json()[0]["fees_outstanding"] is False
+
+
+def test_school_admin_can_flag_and_unflag_fees_outstanding(client, school_admin_headers):
+    create_resp = client.post("/guardians", json=_guardian_payload(), headers=school_admin_headers)
+    guardian_id = create_resp.json()["id"]
+
+    flagged = client.patch(
+        f"/guardians/{guardian_id}", json={"fees_outstanding": True}, headers=school_admin_headers
+    )
+    assert flagged.status_code == 200, flagged.text
+    assert flagged.json()["fees_outstanding"] is True
+
+    search_resp = client.get("/guardians", params={"query": "Gina"}, headers=school_admin_headers)
+    assert search_resp.json()[0]["fees_outstanding"] is True
+
+    unflagged = client.patch(
+        f"/guardians/{guardian_id}", json={"fees_outstanding": False}, headers=school_admin_headers
+    )
+    assert unflagged.json()["fees_outstanding"] is False
+
+
 def test_update_guardian_email_conflict(client, school_admin_headers):
     email_a = f"guardian-a-{uuid.uuid4().hex[:8]}@example.com"
     email_b = f"guardian-b-{uuid.uuid4().hex[:8]}@example.com"

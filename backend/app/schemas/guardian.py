@@ -34,6 +34,7 @@ class GuardianSummaryOut(BaseModel):
     name: str
     email: str | None
     phone: str | None
+    fees_outstanding: bool = False
     children: list[LinkedStudentOut] = Field(default_factory=list)
 
 
@@ -47,9 +48,13 @@ class GuardianUpdateRequest(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     phone: str | None = None
+    # School Admin-set visibility flag — never blocks scanning or recording
+    # a pickup/drop-off. See Guardian.fees_outstanding in app/models/tenant.py.
+    fees_outstanding: bool | None = None
 
 
 class GuardianLookupOut(BaseModel):
     guardian_id: uuid.UUID
     guardian_name: str
+    fees_outstanding: bool = False
     students: list[LinkedStudentOut]

@@ -38,6 +38,12 @@ class Guardian(TenantBase):
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # School Admin-set flag, surfaced to staff at scan time — deliberately
+    # never blocks the scan or the pickup/drop-off itself (see
+    # require_active_subscription for the one thing that actually blocks
+    # scanning: the school's own GuardianPD subscription). This is a
+    # visibility aid for the school's own fee collection, not a lockout.
+    fees_outstanding: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Student(TenantBase):
