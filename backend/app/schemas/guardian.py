@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 class ChildCreate(BaseModel):
     name: str
+    grade: str | None = None
 
 
 class GuardianCreateRequest(BaseModel):

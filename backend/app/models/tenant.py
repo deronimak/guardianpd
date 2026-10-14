@@ -8,7 +8,7 @@ boundary (ARCHITECTURE.md §2).
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -54,6 +54,10 @@ class Student(TenantBase):
     dob: Mapped[date | None] = mapped_column(Date, nullable=True)
     grade: Mapped[str | None] = mapped_column(String(50), nullable=True)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Pupil ID-card photo (pupil credential mode): normalized to a small
+    # JPEG on upload (see app/api/routes/pupil_cards.py), so it's cheap to
+    # keep in the row, same approach as School.logo.
+    photo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
 
 class GuardianStudentLink(TenantBase):

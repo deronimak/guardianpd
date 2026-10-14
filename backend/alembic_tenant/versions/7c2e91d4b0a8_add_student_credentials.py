@@ -1,4 +1,4 @@
-"""add student_credentials and make attendance_events.guardian_id nullable
+"""add student_credentials, student photo, and make attendance_events.guardian_id nullable
 
 Revision ID: 7c2e91d4b0a8
 Revises: 150e4e77ce48
@@ -32,6 +32,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('token'),
     )
+    op.add_column('students', sa.Column('photo', sa.LargeBinary(), nullable=True))
     # Pupil-card scans have no guardian involved. Dropping NOT NULL is safe
     # for every existing row (they all already have one).
     op.alter_column('attendance_events', 'guardian_id', existing_type=postgresql.UUID(as_uuid=True), nullable=True)
@@ -39,4 +40,5 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.alter_column('attendance_events', 'guardian_id', existing_type=postgresql.UUID(as_uuid=True), nullable=False)
+    op.drop_column('students', 'photo')
     op.drop_table('student_credentials')

@@ -424,6 +424,19 @@
     </form>
   </div>
 
+  <div class="panel" id="pupil-cards-panel" style="display:none;">
+    <div class="panel-head">
+      <h2>Pupil ID cards <span class="hint">pupils carry their own card</span></h2>
+    </div>
+    <p style="font-size:13px; color:var(--text-faint); margin:0 0 14px;">Each pupil's card carries their photo and their own QR code. Staff scan it at the gate on arrival and when leaving; parents are notified automatically. Add pupils with the form above (a parent or guardian is still required so they receive the notifications).</p>
+    <div class="row-actions" style="margin-bottom:14px;">
+      <input type="text" id="pupil-filter" placeholder="Filter by pupil name or class" oninput="renderPupilCards()" style="flex:1; min-width:180px; padding:10px 12px; border:1.5px solid var(--border-strong); border-radius:var(--radius-sm); font-size:13.5px; font-family:var(--font);" />
+      <button onclick="printPupilCards(null, this)">Print all cards</button>
+      <button class="secondary" onclick="printPupilCards(document.getElementById('pupil-filter').value.trim(), this)">Print one class (type its exact name)</button>
+    </div>
+    <div id="pupil-cards-list"><p class="empty">Loading…</p></div>
+  </div>
+
   <div class="panel">
     <div class="panel-head">
       <h2>Search guardians <span class="hint">GET /guardians</span></h2>
@@ -539,6 +552,8 @@
   async function loadSchoolProfile() {
     try {
       const profile = await apiFetch("/school/me");
+      window.__credentialMode = profile.credential_mode || "guardian";
+      applyCredentialMode();
       document.getElementById("school-name-display").textContent = profile.name;
       const preview = document.getElementById("school-logo-preview");
       if (profile.has_logo) {
@@ -554,15 +569,151 @@
     }
   }
 
+
+  window.__credentialMode = "guardian";
+  function isPupilMode() { return window.__credentialMode === "pupil"; }
+
+  function applyCredentialMode() {
+    document.getElementById("pupil-cards-panel").style.display = isPupilMode() ? "" : "none";
+    renderChildInputs();
+    if (isPupilMode()) loadPupilCards();
+  }
+
+  async function loadPupilCards() {
+    try {
+      window.__pupils = await apiFetch("/pupil-cards");
+      renderPupilCards();
+    } catch (e) {
+      document.getElementById("pupil-cards-list").innerHTML = `<p class="empty">Could not load pupils: ${e.message}</p>`;
+    }
+  }
+
+  function renderPupilCards() {
+    const container = document.getElementById("pupil-cards-list");
+    const filter = document.getElementById("pupil-filter").value.trim().toLowerCase();
+    const pupils = (window.__pupils || []).filter((p) =>
+      !filter || p.name.toLowerCase().includes(filter) || (p.grade || "").toLowerCase().includes(filter));
+    if (!pupils.length) {
+      container.innerHTML = '<p class="empty">No pupils yet. Add a parent and their children above.</p>';
+      return;
+    }
+    container.innerHTML = pupils.map((p) => `
+      <div class="child-row">
+        <span>${p.name}${p.grade ? " · " + p.grade : ""}
+          <span style="color:var(--text-faint); font-size:12px;"> ${p.has_card ? "· printed " + p.print_count + "×" : "· not printed yet"}</span>
+          ${p.has_photo ? "" : '<span class="fees-badge" style="margin-left:6px;">No photo</span>'}</span>
+        <span class="row-actions">
+          <button class="secondary" onclick="choosePupilPhoto('${p.student_id}')">${p.has_photo ? "Change photo" : "Add photo"}</button>
+          <button onclick="printPupilCards('${p.student_id}', this, true)">Print card</button>
+          <button class="secondary" onclick="reissuePupilCard('${p.student_id}', '${escapeAttr(p.name)}')">Lost / replace</button>
+        </span>
+      </div>`).join("");
+  }
+
+  async function uploadPupilPhoto(studentId, file) {
+    const form = new FormData();
+    form.append("file", file);
+    // Not apiFetch: it forces a JSON Content-Type, which would break the
+    // multipart boundary the browser sets for FormData.
+    const response = await fetch(`/pupil-cards/${studentId}/photo`, {
+      method: "PUT",
+      headers: { "Authorization": `Bearer ${getToken()}`, "X-School-Slug": getSlug() },
+      body: form,
+    });
+    if (!response.ok) {
+      let detail = response.status;
+      try { detail = (await response.json()).detail || detail; } catch (_) {}
+      throw new Error(detail);
+    }
+  }
+
+  function choosePupilPhoto(studentId) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async () => {
+      if (!input.files.length) return;
+      try {
+        await uploadPupilPhoto(studentId, input.files[0]);
+        log("Photo saved.", true);
+        loadPupilCards();
+      } catch (e) {
+        log(`Could not save photo: ${e.message}`, false);
+      }
+    };
+    input.click();
+  }
+
+  async function openPdf(path, okMessage, failMessage, buttonEl) {
+    const originalLabel = buttonEl ? buttonEl.innerHTML : null;
+    if (buttonEl) { buttonEl.disabled = true; buttonEl.innerHTML = `<span class="spinner"></span>Opening…`; }
+    try {
+      const response = await apiFetch(path, { raw: true });
+      if (!response.ok) {
+        let detail = response.status;
+        try { detail = (await response.json()).detail || detail; } catch (_) {}
+        throw new Error(detail);
+      }
+      window.open(URL.createObjectURL(await response.blob()), "_blank");
+      log(okMessage, true);
+      if (isPupilMode()) loadPupilCards();
+    } catch (e) {
+      log(`${failMessage}: ${e.message}`, false);
+    } finally {
+      if (buttonEl) { buttonEl.disabled = false; buttonEl.innerHTML = originalLabel; }
+    }
+  }
+
+  // target: null = everyone, a student id (single=true), a class name, or an
+  // array of student ids (just-enrolled children).
+  function printPupilCards(target, buttonEl, single) {
+    const missing = (window.__pupils || []).filter((p) => !p.has_photo);
+    const relevant = single ? missing.filter((p) => p.student_id === target)
+      : Array.isArray(target) ? missing.filter((p) => target.includes(p.student_id))
+      : target ? missing.filter((p) => (p.grade || "") === target)
+      : missing;
+    if (relevant.length && !confirm(`${relevant.length} pupil(s) have no photo yet, so their card will print without one. Print anyway?`)) {
+      return;
+    }
+    if (single) {
+      return openPdf(`/pupil-cards/${target}/card.pdf`, "Opened pupil card — use the browser's print button.", "Could not open pupil card", buttonEl);
+    }
+    let query = "";
+    if (Array.isArray(target)) query = "?ids=" + encodeURIComponent(target.join(","));
+    else if (target) query = "?grade=" + encodeURIComponent(target);
+    return openPdf(`/pupil-cards/bulk.pdf${query}`, "Opened pupil cards — use the browser's print button.", "Could not open pupil cards", buttonEl);
+  }
+
+  async function reissuePupilCard(studentId, name) {
+    if (!confirm(`Replace ${name}'s card? The old card will stop working immediately, and you can then print a new one.`)) return;
+    try {
+      await apiFetch(`/pupil-cards/${studentId}/reissue`, { method: "POST" });
+      log(`Old card for ${name} deactivated. Click "Print card" to print the replacement.`, true);
+      loadPupilCards();
+    } catch (e) {
+      log(`Could not replace card: ${e.message}`, false);
+    }
+  }
+
   function renderChildInputs() {
     const count = parseInt(document.getElementById("f-child-count").value, 10) || 0;
     const container = document.getElementById("child-inputs");
     let html = "";
     for (let i = 1; i <= count; i++) {
       html += `
-        <div style="margin-bottom:14px;">
-          <label>Child ${i}'s full name</label>
-          <input required class="child-name-input" placeholder="Full name" />
+        <div style="margin-bottom:14px; display:flex; gap:10px; flex-wrap:wrap;">
+          <div style="flex:2; min-width:180px;">
+            <label>Child ${i}'s full name</label>
+            <input required class="child-name-input" placeholder="Full name" />
+          </div>
+          <div style="flex:1; min-width:110px;">
+            <label>Class (optional)</label>
+            <input class="child-grade-input" placeholder="Primary 3" />
+          </div>
+          ${isPupilMode() ? `<div style="flex:1; min-width:170px;">
+            <label>Photo (for the card)</label>
+            <input type="file" accept="image/*" class="child-photo-input" />
+          </div>` : ""}
         </div>`;
     }
     container.innerHTML = html;
@@ -570,10 +721,16 @@
 
   async function addGuardian(event) {
     event.preventDefault();
-    const children = Array.from(document.querySelectorAll(".child-name-input"))
-      .map((input) => input.value.trim())
-      .filter((name) => name.length > 0)
-      .map((name) => ({ name }));
+    const gradeInputs = document.querySelectorAll(".child-grade-input");
+    const photoInputs = document.querySelectorAll(".child-photo-input");
+    const rows = Array.from(document.querySelectorAll(".child-name-input"))
+      .map((input, i) => ({
+        name: input.value.trim(),
+        grade: (gradeInputs[i] && gradeInputs[i].value.trim()) || null,
+        photo: (photoInputs[i] && photoInputs[i].files[0]) || null,
+      }))
+      .filter((child) => child.name.length > 0);
+    const children = rows.map(({ name, grade }) => ({ name, grade }));
     const payload = {
       name: document.getElementById("f-name").value.trim(),
       email: document.getElementById("f-email").value.trim(),
@@ -587,13 +744,25 @@
     try {
       const guardian = await apiFetch("/guardians", { method: "POST", body: JSON.stringify(payload) });
       log(`Enrolled "${guardian.name}" with ${guardian.children.length} child(ren) — activation email sent.`, true);
+      // Children come back in the order they were sent, so photos line up by index.
+      if (isPupilMode()) {
+        for (let i = 0; i < guardian.children.length; i++) {
+          if (!rows[i] || !rows[i].photo) continue;
+          try { await uploadPupilPhoto(guardian.children[i].id, rows[i].photo); }
+          catch (e) { log(`Photo for ${guardian.children[i].name} not saved: ${e.message}`, false); }
+        }
+        await loadPupilCards();
+      }
       document.getElementById("add-guardian-success").innerHTML = `
         <div class="success-banner">
           <div><strong>${guardian.name}</strong> enrolled${guardian.children.length ? " with " + guardian.children.map((c) => c.name).join(", ") : ""}.
           <div class="row-actions" style="margin-top:10px;">
-            <button onclick="printCredential('${guardian.id}', '${escapeAttr(guardian.name)}', this)">Print QR credential</button>
+            ${isPupilMode()
+              ? (guardian.children.length ? `<button onclick="printPupilCards(${escapeAttr(JSON.stringify(guardian.children.map((c) => c.id)))}, this)">Print pupil cards</button>` : "")
+              : `<button onclick="printCredential('${guardian.id}', '${escapeAttr(guardian.name)}', this)">Print QR credential</button>`}
           </div></div>
         </div>`;
+      if (isPupilMode()) loadPupilCards();
       event.target.reset();
       document.getElementById("f-child-count").value = "1";
       renderChildInputs();
@@ -847,7 +1016,7 @@
               <div class="name">${g.name}${g.fees_outstanding ? '<span class="fees-badge">Fees outstanding</span>' : ""}</div>
               <div class="meta">${g.email || "—"}${g.phone ? " · " + g.phone : ""}</div>
               <div class="row-actions">
-                <button onclick="printCredential('${g.id}', '${escapeAttr(g.name)}', this)">Print QR</button>
+                ${isPupilMode() ? "" : `<button onclick="printCredential('${g.id}', '${escapeAttr(g.name)}', this)">Print QR</button>`}
                 <button class="secondary" onclick="resendActivation('${g.id}', '${escapeAttr(g.name)}')">Resend activation</button>
                 <button class="secondary" onclick="toggleAttendance('${g.id}')">View attendance</button>
                 <button class="secondary" onclick="startEditGuardian('${g.id}')">Edit</button>
@@ -868,6 +1037,7 @@
       <div class="child-row" id="child-row-${c.id}">
         <span id="child-view-${c.id}">${c.name}${c.grade ? " · " + c.grade : ""}</span>
         <span class="row-actions">
+          ${isPupilMode() ? `<button onclick="printPupilCards('${c.id}', this, true)">Print card</button>` : ""}
           <button class="secondary" onclick="startEditChild('${guardianId}', '${c.id}')">Edit</button>
           <button class="danger" onclick="deleteChild('${guardianId}', '${c.id}', '${escapeAttr(c.name)}')">Delete</button>
         </span>

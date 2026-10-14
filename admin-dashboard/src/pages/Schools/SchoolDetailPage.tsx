@@ -77,7 +77,14 @@ export function SchoolDetailPage() {
     null
   );
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", address: "", phone: "", billing_email: "", timezone: "" });
+  const [editForm, setEditForm] = useState<{ name: string; address: string; phone: string; billing_email: string; timezone: string; credential_mode: "guardian" | "pupil" }>({
+    name: "",
+    address: "",
+    phone: "",
+    billing_email: "",
+    timezone: "",
+    credential_mode: "guardian",
+  });
 
   const [subscriptionForm, setSubscriptionForm] = useState<{
     status: SubscriptionStatus;
@@ -141,6 +148,7 @@ export function SchoolDetailPage() {
       phone: school.phone ?? "",
       billing_email: school.billing_email ?? "",
       timezone: school.timezone,
+      credential_mode: school.credential_mode ?? "guardian",
     });
     setEditOpen(true);
   };
@@ -507,6 +515,10 @@ export function SchoolDetailPage() {
                 <Calendar className="size-4 text-gray-400" />
                 Timezone: {school.timezone}
               </div>
+              <div className="flex items-center gap-2.5 text-sm text-gray-600">
+                <Calendar className="size-4 text-gray-400" />
+                Cards: {school.credential_mode === "pupil" ? "Pupil ID cards" : "Guardian QR cards"}
+              </div>
             </CardBody>
           </Card>
 
@@ -607,6 +619,22 @@ export function SchoolDetailPage() {
           <div>
             <Label>Timezone</Label>
             <Input value={editForm.timezone} onChange={(e) => setEditForm((p) => ({ ...p, timezone: e.target.value }))} />
+          </div>
+          <div>
+            <Label>Card type</Label>
+            <Select
+              value={editForm.credential_mode}
+              onChange={(e) =>
+                setEditForm((p) => ({ ...p, credential_mode: e.target.value as "guardian" | "pupil" }))
+              }
+            >
+              <option value="guardian">Guardian QR cards (parents scan at pickup)</option>
+              <option value="pupil">Pupil ID cards (pupils travel alone)</option>
+            </Select>
+            <p className="mt-1.5 text-xs text-gray-500">
+              Pupil mode: each pupil gets their own card, scanned at arrival and departure, and parents are notified
+              automatically. Choose before the school prints cards; the school prints pupil cards from its admin console.
+            </p>
           </div>
         </div>
       </Modal>

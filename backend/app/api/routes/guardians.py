@@ -132,11 +132,11 @@ def create_guardian(
 
         children_out = []
         for child in payload.children:
-            student = Student(name=child.name)
+            student = Student(name=child.name, grade=child.grade)
             db.add(student)
             db.flush()
             db.add(GuardianStudentLink(guardian_id=guardian.id, student_id=student.id))
-            children_out.append({"id": student.id, "name": student.name, "grade": None})
+            children_out.append({"id": student.id, "name": student.name, "grade": student.grade})
 
         summary = f"Added guardian {guardian.name}"
         if children_out:

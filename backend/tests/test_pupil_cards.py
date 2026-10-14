@@ -240,3 +240,67 @@ def test_deleting_a_pupil_removes_their_card(client, pupil_school, school_admin_
         assert db.query(StudentCredential).filter_by(student_id=sid).count() == 0
     finally:
         db.close()
+
+
+def _sample_photo(fmt="JPEG", size=(900, 600)):
+    import io
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", size, (90, 140, 200))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse((size[0] * 0.3, size[1] * 0.1, size[0] * 0.7, size[1] * 0.7), fill=(120, 80, 50))
+    buf = io.BytesIO()
+    img.save(buf, format=fmt)
+    return buf.getvalue()
+
+
+def test_pupil_photo_upload_is_normalized_and_printed_on_the_card(client, pupil_school, school_admin_headers):
+    import io
+
+    import fitz
+    from PIL import Image
+
+    sid = _new_student(client, school_admin_headers)
+    listing = client.get("/pupil-cards", headers=school_admin_headers).json()
+    assert listing[0]["has_photo"] is False
+
+    # A large landscape PNG is accepted and normalized to a small 4:5 JPEG.
+    resp = client.put(
+        f"/pupil-cards/{sid}/photo",
+        files={"file": ("kid.png", _sample_photo("PNG", (2000, 1200)), "image/png")},
+        headers=school_admin_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    stored = client.get(f"/pupil-cards/{sid}/photo", headers=school_admin_headers)
+    assert stored.status_code == 200 and stored.headers["content-type"] == "image/jpeg"
+    img = Image.open(io.BytesIO(stored.content))
+    assert img.size == (320, 400)
+    assert len(stored.content) < 100_000
+    assert client.get("/pupil-cards", headers=school_admin_headers).json()[0]["has_photo"] is True
+
+    # The printed card now embeds the photo in addition to the QR code.
+    pdf = client.get(f"/pupil-cards/{sid}/card.pdf", headers=school_admin_headers)
+    doc = fitz.open(stream=pdf.content, filetype="pdf")
+    assert len(doc[0].get_images()) == 2
+
+
+def test_pupil_photo_rejects_non_images_and_guardian_mode(client, pupil_school, school_admin_headers):
+    sid = _new_student(client, school_admin_headers)
+    bad = client.put(
+        f"/pupil-cards/{sid}/photo",
+        files={"file": ("notes.txt", b"this is not an image", "text/plain")},
+        headers=school_admin_headers,
+    )
+    assert bad.status_code == 400
+    assert client.get(f"/pupil-cards/{sid}/photo", headers=school_admin_headers).status_code == 404
+
+
+def test_photo_endpoints_closed_in_guardian_mode(client, enrolled_school, school_admin_headers):
+    sid = _new_student(client, school_admin_headers)
+    resp = client.put(
+        f"/pupil-cards/{sid}/photo",
+        files={"file": ("kid.jpg", _sample_photo(), "image/jpeg")},
+        headers=school_admin_headers,
+    )
+    assert resp.status_code == 403

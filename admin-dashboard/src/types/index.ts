@@ -37,6 +37,8 @@ export interface SchoolDetail {
   phone: string | null;
   timezone: string;
   billing_email: string | null;
+  // "guardian" (parents present a QR card) or "pupil" (each pupil carries their own card)
+  credential_mode: "guardian" | "pupil";
   subscription_status: SubscriptionStatus;
   price_per_child_naira: number;
   started_at: string;
@@ -84,6 +86,7 @@ export interface SchoolUpdateRequest {
   phone?: string;
   billing_email?: string;
   timezone?: string;
+  credential_mode?: "guardian" | "pupil";
 }
 
 // Matches InvoiceOut (backend/app/schemas/billing.py)

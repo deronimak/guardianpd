@@ -299,4 +299,59 @@ class ApiClient {
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
+  /// The signed-in staff member's school profile — used to learn the
+  /// school's credential mode ("guardian" or "pupil").
+  Future<Map<String, dynamic>> getSchoolProfile() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/school/me'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Pupil-card scan (schools in "pupil" mode). [scannedAt] is only sent for
+  /// scans being replayed after being captured offline.
+  Future<Map<String, dynamic>> pupilScan(String qrToken, {DateTime? scannedAt}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/attendance/pupil-scan'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({
+        'token': qrToken,
+        if (scannedAt != null) 'scanned_at': scannedAt.toUtc().toIso8601String(),
+      }),
+    ).timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Uploads scans captured offline. Returns one result per scan, in order.
+  Future<List<Map<String, dynamic>>> pupilScanBatch(List<Map<String, dynamic>> scans) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/attendance/pupil-scan/batch'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({'scans': scans}),
+    ).timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['results'] as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Names/classes of pupils with active cards, cached for offline use.
+  Future<List<Map<String, dynamic>>> pupilRoster() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/attendance/pupil-roster'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+  }
 }

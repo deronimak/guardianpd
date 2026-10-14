@@ -106,6 +106,7 @@ def _draw_card_frame(
     school_name: str,
     qr_image: ImageReader,
     school_logo: ImageReader | None,
+    qr_scale: float = 0.72,
 ) -> tuple[float, float, float, float]:
     """Everything on the front that's the same for a guardian card and a
     pupil card: corner accents, footer bar, logo + school name, and the QR
@@ -142,7 +143,7 @@ def _draw_card_frame(
     # Computed before the text column below so the column's width can
     # actually stop at the QR's left edge instead of the card's, which
     # otherwise lets text run under the (opaque, drawn-on-top) QR box.
-    qr_size = 0.72 * CARD_HEIGHT
+    qr_size = qr_scale * CARD_HEIGHT
     qr_x = CARD_WIDTH - _MARGIN - qr_size
     qr_y = CARD_HEIGHT - _MARGIN - qr_size
 
@@ -336,31 +337,70 @@ def _draw_pupil_front(
     school_name: str,
     qr_image: ImageReader,
     school_logo: ImageReader | None,
+    photo: ImageReader | None = None,
 ) -> None:
-    text_x, text_width, y, floor_y = _draw_card_frame(pdf, school_name, qr_image, school_logo)
+    # With a photo the QR is drawn a little smaller (still far above scannable
+    # size at card resolution) to leave room for the photo on the left; the
+    # name column then sits between photo and QR.
+    text_x, text_width, y, floor_y = _draw_card_frame(
+        pdf, school_name, qr_image, school_logo, qr_scale=0.62 if photo is not None else 0.72
+    )
+
+    name_font = 13.0
+    if photo is not None:
+        photo_w, photo_h = 0.85 * inch, 1.06 * inch
+        photo_top = y + 0.06 * inch
+        photo_y = photo_top - photo_h
+        pdf.drawImage(photo, text_x, photo_y, width=photo_w, height=photo_h, mask="auto")
+        pdf.setStrokeColor(BRAND_PURPLE)
+        pdf.setLineWidth(1.2)
+        pdf.rect(text_x, photo_y, photo_w, photo_h, stroke=1, fill=0)
+        gap = 0.1 * inch
+        text_x += photo_w + gap
+        text_width -= photo_w + gap
+        name_font = 10.0
 
     pdf.setFillColor(BRAND_PURPLE)
     pdf.setFont("Helvetica-Bold", 6.5)
     pdf.drawString(text_x, y, "PUPIL ID CARD")
-    y -= 14
+    y -= 14 if photo is None else 12
 
+    max_lines = 2 if photo is None else 3
+    if photo is not None:
+        # The column beside the photo is narrow: pick the largest size at
+        # which the whole name fits in max_lines without breaking a word
+        # mid-way, rather than clipping a long surname.
+        for candidate in (10.0, 9.0, 8.5, 8.0, 7.5, 7.0):
+            name_font = candidate
+            lines = _wrap_to_width(pdf, pupil_name, "Helvetica-Bold", name_font, text_width)
+            longest_word = max((pdf.stringWidth(w, "Helvetica-Bold", name_font) for w in pupil_name.split()), default=0)
+            if len(lines) <= max_lines and longest_word <= text_width:
+                break
     pdf.setFillColor(BRAND_RED)
-    pdf.setFont("Helvetica-Bold", 13)
-    for line in _wrap_to_width(pdf, pupil_name, "Helvetica-Bold", 13, text_width)[:2]:
+    pdf.setFont("Helvetica-Bold", name_font)
+    for line in _wrap_to_width(pdf, pupil_name, "Helvetica-Bold", name_font, text_width)[:max_lines]:
         pdf.drawString(text_x, y, line)
-        y -= 14
+        y -= name_font + 1
 
     if grade and y >= floor_y:
         y -= 4
-        pdf.setFillColor(BRAND_INK)
-        pdf.setFont("Helvetica-Bold", 7.5)
-        pdf.drawString(text_x, y, "Class")
-        label_w = pdf.stringWidth("Class", "Helvetica-Bold", 7.5)
-        pdf.setFillColor(BRAND_BLUE)
-        pdf.setFont("Helvetica", 7.5)
-        class_x = text_x + max(label_w, 0.5 * inch) + 6
-        for line in _wrap_to_width(pdf, f": {grade}", "Helvetica", 7.5, text_width - (class_x - text_x))[:1]:
-            pdf.drawString(class_x, y, line)
+        if photo is not None:
+            # Narrow column: "Class: Primary 4 Gold" wrapped onto up to 2 lines.
+            pdf.setFillColor(BRAND_BLUE)
+            pdf.setFont("Helvetica-Bold", 7.5)
+            for line in _wrap_to_width(pdf, f"Class: {grade}", "Helvetica-Bold", 7.5, text_width)[:2]:
+                pdf.drawString(text_x, y, line)
+                y -= 9.5
+        else:
+            pdf.setFillColor(BRAND_INK)
+            pdf.setFont("Helvetica-Bold", 7.5)
+            pdf.drawString(text_x, y, "Class")
+            label_w = pdf.stringWidth("Class", "Helvetica-Bold", 7.5)
+            pdf.setFillColor(BRAND_BLUE)
+            pdf.setFont("Helvetica", 7.5)
+            class_x = text_x + max(label_w, 0.5 * inch) + 6
+            for line in _wrap_to_width(pdf, f": {grade}", "Helvetica", 7.5, text_width - (class_x - text_x))[:1]:
+                pdf.drawString(class_x, y, line)
 
 
 def generate_pupil_cards_pdf(
@@ -371,7 +411,8 @@ def generate_pupil_cards_pdf(
     """One front page + one back page per pupil, in order — same 3.5" x 2"
     card size and duplex convention as generate_qr_credential_pdf, so a
     whole class can go through the card printer in one run. Each entry in
-    `pupils` is {"name": str, "grade": str | None, "qr_token": str}.
+    `pupils` is {"name": str, "grade": str | None, "qr_token": str,
+    "photo": bytes | None} — a pupil with a photo gets the photo layout.
     """
     school_logo = ImageReader(io.BytesIO(school_logo_bytes)) if school_logo_bytes else None
 
@@ -383,7 +424,10 @@ def generate_pupil_cards_pdf(
         qrcode.make(pupil["qr_token"]).save(qr_buffer, format="PNG")
         qr_buffer.seek(0)
 
-        _draw_pupil_front(pdf, pupil["name"], pupil.get("grade"), school_name, ImageReader(qr_buffer), school_logo)
+        photo = ImageReader(io.BytesIO(pupil["photo"])) if pupil.get("photo") else None
+        _draw_pupil_front(
+            pdf, pupil["name"], pupil.get("grade"), school_name, ImageReader(qr_buffer), school_logo, photo
+        )
         pdf.showPage()
         _draw_back(
             pdf,
