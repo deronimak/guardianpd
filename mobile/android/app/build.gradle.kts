@@ -47,8 +47,10 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // Flutter's default (21) is too low for mobile_scanner's camera
         // dependency (androidx.camera:camera-core requires 23) — surfaced
-        // by a real build attempt.
-        minSdk = 23
+        // by a real build attempt. Raised to 24 because Play's automatic
+        // protection now rejects uploads with a minimum SDK below 24, also
+        // surfaced by a real upload attempt.
+        minSdk = 24
         // Pinned above Flutter 3.29's bundled default (35) — Play Console
         // now requires targeting at least API 36, surfaced by a real
         // upload attempt, not guessed. compileSdk is already 36 above, so
