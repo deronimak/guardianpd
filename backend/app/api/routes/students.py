@@ -12,6 +12,7 @@ from app.models.tenant import (
     GuardianStudentLink,
     Notification,
     Student,
+    StudentCredential,
     WelfareAlertLog,
 )
 from app.schemas.student import LinkCreateRequest, StudentCreateRequest, StudentOut, StudentUpdateRequest
@@ -127,6 +128,7 @@ def delete_student(
     tenant_db.query(ExpectedAbsence).filter_by(student_id=student_id).delete(synchronize_session=False)
     tenant_db.query(WelfareAlertLog).filter_by(student_id=student_id).delete(synchronize_session=False)
     tenant_db.query(GuardianStudentLink).filter_by(student_id=student_id).delete(synchronize_session=False)
+    tenant_db.query(StudentCredential).filter_by(student_id=student_id).delete(synchronize_session=False)
     tenant_db.delete(student)
     record_audit(
         tenant_db, "student", student_id, "deleted", f"Deleted student {student_name}", resolve_staff_actor_label(tenant_db, claims)

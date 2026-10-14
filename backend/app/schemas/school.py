@@ -1,6 +1,7 @@
 import uuid
 import zoneinfo
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -39,6 +40,7 @@ class SchoolOut(BaseModel):
     timezone: str
     billing_email: str | None
     archived_at: datetime | None = None
+    credential_mode: str = "guardian"
 
 
 class SchoolWithSubscriptionOut(BaseModel):
@@ -53,6 +55,7 @@ class SchoolWithSubscriptionOut(BaseModel):
     created_at: datetime
     subscription_status: str
     archived_at: datetime | None = None
+    credential_mode: str = "guardian"
 
 
 class SchoolDetailOut(BaseModel):
@@ -81,6 +84,7 @@ class SchoolDetailOut(BaseModel):
     qr_printed_count: int
     archived_at: datetime | None = None
     has_logo: bool = False
+    credential_mode: str = "guardian"
 
 
 class SchoolProfileOut(BaseModel):
@@ -91,6 +95,9 @@ class SchoolProfileOut(BaseModel):
 
     name: str
     has_logo: bool
+    # "guardian" or "pupil" — tells the School Admin console and the staff
+    # scanner which card flow this school uses (School.credential_mode).
+    credential_mode: str = "guardian"
 
 
 class SchoolUpdateRequest(BaseModel):
@@ -105,6 +112,7 @@ class SchoolUpdateRequest(BaseModel):
     phone: str | None = None
     billing_email: EmailStr | None = None
     timezone: str | None = None
+    credential_mode: Literal["guardian", "pupil"] | None = None
 
     @field_validator("timezone")
     @classmethod

@@ -101,14 +101,17 @@ def _draw_image_fit(pdf: canvas.Canvas, image: ImageReader, x: float, y: float, 
     pdf.drawImage(image, x, y + (max_h - h) / 2, width=w, height=h, mask="auto")
 
 
-def _draw_front(
+def _draw_card_frame(
     pdf: canvas.Canvas,
-    guardian_name: str,
     school_name: str,
     qr_image: ImageReader,
-    children_names: list[str] | None,
     school_logo: ImageReader | None,
-) -> None:
+) -> tuple[float, float, float, float]:
+    """Everything on the front that's the same for a guardian card and a
+    pupil card: corner accents, footer bar, logo + school name, and the QR
+    box. Returns (text_x, text_width, y, floor_y) — where the left text
+    column starts, how wide it can be, and the lowest y it may draw to.
+    """
     # Two diagonal corner accents (top-left, bottom-left) in the card's red
     # accent, matching the school's reference PVC card design. The top-left
     # one is short enough (triangle_h) that the header row is the only
@@ -184,12 +187,27 @@ def _draw_front(
     pdf.setFont("Helvetica", 7.5)
     pdf.drawCentredString(qr_x + qr_size / 2, qr_y - 0.155 * inch, "Powered by GuardianPD")
 
-    # Guardian name + children, left column below the header row — clear of
-    # the top-left accent (which ends at CARD_HEIGHT - triangle_h) by the
-    # time this starts, so it's safe back at the card's own margin.
+    # Left text column below the header row — clear of the top-left accent
+    # (which ends at CARD_HEIGHT - triangle_h) by the time it starts, so
+    # it's safe back at the card's own margin. The floor is above the
+    # footer accent (bar + triangle), which the column shares horizontal
+    # space with, unlike the QR on the right.
     text_x = _MARGIN
     text_width = qr_x - 0.16 * inch - text_x
     y = header_y - 0.16 * inch
+    floor_y = triangle_h + 0.06 * inch
+    return text_x, text_width, y, floor_y
+
+
+def _draw_front(
+    pdf: canvas.Canvas,
+    guardian_name: str,
+    school_name: str,
+    qr_image: ImageReader,
+    children_names: list[str] | None,
+    school_logo: ImageReader | None,
+) -> None:
+    text_x, text_width, y, floor_y = _draw_card_frame(pdf, school_name, qr_image, school_logo)
 
     pdf.setFillColor(BRAND_RED)
     pdf.setFont("Helvetica-Bold", 13)
@@ -204,9 +222,6 @@ def _draw_front(
         pdf.drawString(text_x, y, "Children:")
         y -= 11
         pdf.setFont("Helvetica", 7.5)
-        # Floor above the footer accent (bar + triangle), which the text
-        # column shares horizontal space with, unlike the QR on the right.
-        floor_y = triangle_h + 0.06 * inch
         for i, child in enumerate(children_names[:4], start=1):
             if y < floor_y:
                 break
@@ -229,7 +244,11 @@ def _draw_back(
     pdf: canvas.Canvas,
     school_name: str,
     children_names: list[str] | None,
+    statement: str | None = None,
+    instruction: str | None = None,
 ) -> None:
+    """statement/instruction default to the guardian-card wording; pupil
+    cards (generate_pupil_cards_pdf) pass their own."""
     # PVC card printers/duplex trays typically flip the card end-over-end
     # (top edge to bottom edge) between sides, not left-to-right like a
     # book page. Drawing the back in the same upright orientation as the
@@ -250,8 +269,9 @@ def _draw_back(
     center_x = CARD_WIDTH / 2
     y = CARD_HEIGHT - 0.34 * inch
 
-    who = ", ".join(children_names) if children_names else "the enrolled child"
-    statement = f"This card verifies authorized pickup and drop-off for {who} at {school_name}."
+    if statement is None:
+        who = ", ".join(children_names) if children_names else "the enrolled child"
+        statement = f"This card verifies authorized pickup and drop-off for {who} at {school_name}."
     pdf.setFillColor(colors.black)
     pdf.setFont("Helvetica-Bold", 8)
     for line in _wrap_to_width(pdf, statement, "Helvetica-Bold", 8, text_width)[:4]:
@@ -261,7 +281,8 @@ def _draw_back(
     y -= 7
     pdf.setFillColor(colors.black)
     pdf.setFont("Helvetica", 8)
-    instruction = "Present at the gate for scanning. If lost, report to the school office immediately."
+    if instruction is None:
+        instruction = "Present at the gate for scanning. If lost, report to the school office immediately."
     for line in _wrap_to_width(pdf, instruction, "Helvetica", 8, text_width)[:3]:
         pdf.drawCentredString(center_x, y, line)
         y -= 10
@@ -303,6 +324,78 @@ def generate_qr_credential_pdf(
     pdf.showPage()
     _draw_back(pdf, school_name, children_names)
     pdf.showPage()
+
+    pdf.save()
+    return buffer.getvalue()
+
+
+def _draw_pupil_front(
+    pdf: canvas.Canvas,
+    pupil_name: str,
+    grade: str | None,
+    school_name: str,
+    qr_image: ImageReader,
+    school_logo: ImageReader | None,
+) -> None:
+    text_x, text_width, y, floor_y = _draw_card_frame(pdf, school_name, qr_image, school_logo)
+
+    pdf.setFillColor(BRAND_PURPLE)
+    pdf.setFont("Helvetica-Bold", 6.5)
+    pdf.drawString(text_x, y, "PUPIL ID CARD")
+    y -= 14
+
+    pdf.setFillColor(BRAND_RED)
+    pdf.setFont("Helvetica-Bold", 13)
+    for line in _wrap_to_width(pdf, pupil_name, "Helvetica-Bold", 13, text_width)[:2]:
+        pdf.drawString(text_x, y, line)
+        y -= 14
+
+    if grade and y >= floor_y:
+        y -= 4
+        pdf.setFillColor(BRAND_INK)
+        pdf.setFont("Helvetica-Bold", 7.5)
+        pdf.drawString(text_x, y, "Class")
+        label_w = pdf.stringWidth("Class", "Helvetica-Bold", 7.5)
+        pdf.setFillColor(BRAND_BLUE)
+        pdf.setFont("Helvetica", 7.5)
+        class_x = text_x + max(label_w, 0.5 * inch) + 6
+        for line in _wrap_to_width(pdf, f": {grade}", "Helvetica", 7.5, text_width - (class_x - text_x))[:1]:
+            pdf.drawString(class_x, y, line)
+
+
+def generate_pupil_cards_pdf(
+    pupils: list[dict],
+    school_name: str,
+    school_logo_bytes: bytes | None = None,
+) -> bytes:
+    """One front page + one back page per pupil, in order — same 3.5" x 2"
+    card size and duplex convention as generate_qr_credential_pdf, so a
+    whole class can go through the card printer in one run. Each entry in
+    `pupils` is {"name": str, "grade": str | None, "qr_token": str}.
+    """
+    school_logo = ImageReader(io.BytesIO(school_logo_bytes)) if school_logo_bytes else None
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=(CARD_WIDTH, CARD_HEIGHT))
+
+    for pupil in pupils:
+        qr_buffer = io.BytesIO()
+        qrcode.make(pupil["qr_token"]).save(qr_buffer, format="PNG")
+        qr_buffer.seek(0)
+
+        _draw_pupil_front(pdf, pupil["name"], pupil.get("grade"), school_name, ImageReader(qr_buffer), school_logo)
+        pdf.showPage()
+        _draw_back(
+            pdf,
+            school_name,
+            None,
+            statement=f"This card identifies {pupil['name']} of {school_name}.",
+            instruction=(
+                "Scan at the school gate on arrival and when leaving. "
+                "If found, please return it to the school office."
+            ),
+        )
+        pdf.showPage()
 
     pdf.save()
     return buffer.getvalue()

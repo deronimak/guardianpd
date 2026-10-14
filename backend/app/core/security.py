@@ -39,6 +39,18 @@ def generate_qr_token(guardian_id: str, school_id: str) -> str:
     return f"{_b64url_encode(payload_bytes)}.{_b64url_encode(signature)}"
 
 
+def generate_pupil_token(student_id: str, school_id: str) -> str:
+    """Same signing scheme as a guardian token, but keyed on a pupil ("pid")
+    instead of a guardian ("gid") — see StudentCredential. The two kinds
+    can't be confused: each is only accepted by its own scan endpoint, and
+    each is looked up in its own credential table.
+    """
+    payload = {"pid": student_id, "sid": school_id, "n": secrets.token_urlsafe(16)}
+    payload_bytes = json.dumps(payload, separators=(",", ":")).encode()
+    signature = hmac.new(settings.qr_signing_key.encode(), payload_bytes, hashlib.sha256).digest()
+    return f"{_b64url_encode(payload_bytes)}.{_b64url_encode(signature)}"
+
+
 def verify_qr_token(token: str) -> dict[str, Any] | None:
     """Checks the signature and returns the decoded payload, or None if invalid.
 

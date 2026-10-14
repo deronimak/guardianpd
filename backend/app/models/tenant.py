@@ -86,12 +86,34 @@ class QRCredential(TenantBase):
     last_printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class StudentCredential(TenantBase):
+    """The signed, printed QR token for one pupil, used by schools in
+    "pupil" credential mode (School.credential_mode) where the child carries
+    their own card instead of a guardian presenting one. Kept in its own
+    table rather than overloading QRCredential (whose guardian_id is
+    required and meaningful to every existing guardian-mode flow), so a
+    pupil token can never be mistaken for a guardian one or vice versa.
+    """
+
+    __tablename__ = "student_credentials"
+
+    id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("students.id"))
+    token: Mapped[str] = mapped_column(String(500), unique=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    print_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AttendanceEvent(TenantBase):
     __tablename__ = "attendance_events"
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     student_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("students.id"))
-    guardian_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("guardians.id"))
+    # Null for pupil-card scans (the pupil carries their own card, so there's
+    # no guardian in the picture); always set for guardian-mode events.
+    guardian_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), ForeignKey("guardians.id"), nullable=True)
     type: Mapped[str] = mapped_column(String(20))  # drop_off / pick_up
     scanned_by_staff_id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), ForeignKey("staff_users.id"))
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

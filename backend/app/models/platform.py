@@ -60,6 +60,15 @@ class School(PlatformBase):
     logo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     logo_content_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    # Who holds the printed QR card: "guardian" (default — every school that
+    # existed before this field; a guardian presents it at pickup/drop-off)
+    # or "pupil" (public-school style, where children travel alone: each
+    # pupil carries their own card, scanned on arrival and departure, and
+    # their linked guardians are notified). Set by the Master Admin; the
+    # pupil-card endpoints (app/api/routes/pupil_cards.py, POST
+    # /attendance/pupil-scan) refuse to run for a school left on "guardian".
+    credential_mode: Mapped[str] = mapped_column(String(20), default="guardian", server_default="guardian")
+
 
 class Subscription(PlatformBase):
     """Manual active/trial/suspended state, controlled from the Master

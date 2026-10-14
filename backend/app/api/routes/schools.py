@@ -31,6 +31,7 @@ from app.models.tenant import (
     GuardianStudentLink,
     Notification,
     QRCredential,
+    StudentCredential,
     StaffUser,
     Student,
     TenantBase,
@@ -108,6 +109,7 @@ def list_schools(
                 "created_at": school.created_at,
                 "subscription_status": subscription.status if subscription else "none",
                 "archived_at": school.archived_at,
+                "credential_mode": school.credential_mode,
             }
         )
     return result
@@ -162,6 +164,7 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
         "qr_printed_count": qr_printed_count,
         "archived_at": school.archived_at,
         "has_logo": school.logo is not None,
+        "credential_mode": school.credential_mode,
     }
 
 
@@ -353,6 +356,7 @@ def delete_school_student(
         tenant_db.query(ExpectedAbsence).filter_by(student_id=student_id).delete(synchronize_session=False)
         tenant_db.query(WelfareAlertLog).filter_by(student_id=student_id).delete(synchronize_session=False)
         tenant_db.query(GuardianStudentLink).filter_by(student_id=student_id).delete(synchronize_session=False)
+        tenant_db.query(StudentCredential).filter_by(student_id=student_id).delete(synchronize_session=False)
         tenant_db.delete(student)
         record_audit(
             tenant_db,

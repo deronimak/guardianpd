@@ -21,7 +21,7 @@ def get_my_school(school: School = Depends(get_school)) -> dict:
     same pattern the console already uses for QR credential PDFs: a second
     request for the binary body rather than inlining it here as base64).
     """
-    return {"name": school.name, "has_logo": school.logo is not None}
+    return {"name": school.name, "has_logo": school.logo is not None, "credential_mode": school.credential_mode}
 
 
 @router.get("/logo")
