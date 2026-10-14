@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_staff, get_tenant_db, require_active_subscription
 from app.core.push import send_push
+from app.core.sms import send_sms
 from app.core.security import verify_qr_token
 from app.models.platform import School
 from app.models.tenant import (
@@ -35,7 +36,15 @@ def _guardians_for_student(tenant_db: Session, student_id) -> list[Guardian]:
     )
 
 
-def _push_to_guardians(tenant_db: Session, guardians: list[Guardian], event_id, title: str, body: str) -> None:
+def _push_to_guardians(
+    tenant_db: Session,
+    guardians: list[Guardian],
+    event_id,
+    title: str,
+    body: str,
+    school: School | None = None,
+    sms_text: str | None = None,
+) -> None:
     """Best-effort: a bad/stale device token must never fail the attendance
     write itself — the scan already succeeded before this runs. A dead
     token (app uninstalled, etc.) is pruned; any other send error is just
@@ -54,6 +63,15 @@ def _push_to_guardians(tenant_db: Session, guardians: list[Guardian], event_id, 
         # One Notification row per guardian even with zero devices registered
         # yet — keeps an auditable record that we tried, per ARCHITECTURE.md §7.
         tenant_db.add(Notification(guardian_id=guardian.id, event_id=event_id, channel="push"))
+
+        # Opt-in per school (costs money): text only guardians who have no
+        # phone registered for push, i.e. those the push above can't reach.
+        if school is not None and school.sms_enabled and not devices and guardian.phone:
+            try:
+                if send_sms(guardian.phone, sms_text or body):
+                    tenant_db.add(Notification(guardian_id=guardian.id, event_id=event_id, channel="sms"))
+            except Exception:
+                logger.exception("SMS send failed for guardian %s (continuing)", guardian.id)
     tenant_db.commit()
 
 
@@ -119,6 +137,8 @@ def scan_qr(
                 f"Someone scanned an unrecognized/unauthorized code for {student_name} at {school.name}. "
                 "If this wasn't expected, please contact the school right away."
             ),
+            school=school,
+            sms_text=f"{school.name}: an unrecognized code was scanned for {student_name}. If unexpected, contact the school.",
         )
         raise HTTPException(status_code=403, detail="This guardian is not authorized for this child")
 
@@ -144,6 +164,7 @@ def scan_qr(
         event.id,
         title=f"{student_name} {action_label}",
         body=f"{student_name} was {action_label} by {guardian_name} at {school.name}.",
+        school=school,
     )
 
     return {"event_id": event.id, "status": "recorded", "flagged": False}

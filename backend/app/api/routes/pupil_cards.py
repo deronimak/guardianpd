@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, ValidationError
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
@@ -18,7 +19,9 @@ from app.core.audit import record_audit, resolve_staff_actor_label
 from app.core.qr_pdf import generate_pupil_cards_pdf
 from app.core.security import generate_pupil_token
 from app.models.platform import School
-from app.models.tenant import Student, StudentCredential
+from app.api.routes.guardians import _activation_email, enroll_guardian
+from app.models.tenant import Guardian, GuardianStudentLink, Student, StudentCredential
+from app.schemas.guardian import ChildCreate, GuardianCreateRequest
 
 _MAX_PHOTO_UPLOAD_BYTES = 8 * 1024 * 1024  # a raw phone photo; stored size is far smaller (see below).
 _PHOTO_SIZE = (320, 400)  # 4:5 portrait, ~2.5x the printed size for a crisp card.
@@ -222,3 +225,134 @@ def get_pupil_photo(
     if student is None or student.photo is None:
         raise HTTPException(status_code=404, detail="No photo for this pupil")
     return Response(content=student.photo, media_type="image/jpeg")
+
+
+class ImportRow(BaseModel):
+    pupil_name: str
+    grade: str | None = None
+    # Optional: with a guardian, the parent is enrolled (or linked, if already
+    # at this school) so they get arrival/departure alerts. Without one, the
+    # pupil is still created and can be scanned.
+    guardian_name: str | None = None
+    guardian_email: str | None = None
+    guardian_phone: str | None = None
+
+
+class ImportRequest(BaseModel):
+    rows: list[ImportRow] = Field(max_length=500)
+
+
+_email_adapter = TypeAdapter(EmailStr)
+
+
+@router.post("/import")
+def import_pupils(
+    payload: ImportRequest,
+    school: School = Depends(get_school),
+    tenant_db: Session = Depends(get_tenant_db),
+    claims: dict = Depends(get_current_staff),
+) -> dict:
+    """Bulk-enroll pupils (and their parents) from a spreadsheet the browser
+    has already parsed. Safe to re-run with the same file: a pupil whose
+    name+class already exists is reported "exists" and left alone, and a
+    parent whose email is already a guardian here is linked to rather than
+    duplicated. Each parent's family is created atomically; a bad row never
+    blocks the others.
+    """
+    _require_pupil_mode(school)
+    actor = resolve_staff_actor_label(tenant_db, claims)
+
+    def key(name: str, grade: str | None) -> tuple[str, str]:
+        return (" ".join(name.lower().split()), (grade or "").strip().lower())
+
+    existing_pupils = {key(s.name, s.grade) for s in tenant_db.query(Student).all()}
+    guardians_by_email = {
+        g.email.lower(): g.id for g in tenant_db.query(Guardian).filter(Guardian.email.isnot(None)).all()
+    }
+
+    results: dict[int, dict] = {}
+    # guardian email -> [(row_no, ImportRow)] for rows still to create
+    families: dict[str, list[tuple[int, ImportRow]]] = {}
+    loose: list[tuple[int, ImportRow]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for number, row in enumerate(payload.rows, start=1):
+        name = " ".join(row.pupil_name.split())
+        grade = (row.grade or "").strip() or None
+        if not name:
+            results[number] = {"row": number, "status": "error", "detail": "Pupil name is empty"}
+            continue
+        k = key(name, grade)
+        if k in existing_pupils or k in seen:
+            results[number] = {"row": number, "status": "exists", "detail": "Already enrolled"}
+            continue
+        seen.add(k)
+        row = row.model_copy(update={"pupil_name": name, "grade": grade})
+
+        email = (row.guardian_email or "").strip()
+        if not email:
+            loose.append((number, row))
+            continue
+        try:
+            email = str(_email_adapter.validate_python(email)).lower()
+        except ValidationError:
+            results[number] = {"row": number, "status": "error", "detail": f"Invalid parent email: {email}"}
+            continue
+        if not (row.guardian_name or "").strip():
+            results[number] = {"row": number, "status": "error", "detail": "Parent name is required with a parent email"}
+            continue
+        families.setdefault(email, []).append((number, row))
+
+    def add_pupil(row: ImportRow) -> Student:
+        student = Student(name=row.pupil_name, grade=row.grade)
+        tenant_db.add(student)
+        tenant_db.flush()
+        record_audit(tenant_db, "student", student.id, "created", f"Imported pupil {student.name}", actor)
+        return student
+
+    for number, row in loose:
+        try:
+            add_pupil(row)
+            tenant_db.commit()
+            results[number] = {"row": number, "status": "created"}
+        except Exception as exc:
+            tenant_db.rollback()
+            results[number] = {"row": number, "status": "error", "detail": str(exc)[:120]}
+
+    for email, members in families.items():
+        try:
+            if email in guardians_by_email:
+                for number, row in members:
+                    student = add_pupil(row)
+                    tenant_db.add(GuardianStudentLink(guardian_id=guardians_by_email[email], student_id=student.id))
+                tenant_db.commit()
+                invite = None
+            else:
+                first = members[0][1]
+                _, invite = enroll_guardian(
+                    school,
+                    claims,
+                    GuardianCreateRequest(
+                        name=first.guardian_name.strip(),
+                        email=email,
+                        phone=(first.guardian_phone or "").strip() or None,
+                        children=[ChildCreate(name=r.pupil_name, grade=r.grade) for _, r in members],
+                    ),
+                )
+                if invite is not None:
+                    _activation_email(school.name, email, invite)
+            for number, _ in members:
+                results[number] = {"row": number, "status": "created"}
+        except Exception as exc:
+            tenant_db.rollback()
+            detail = getattr(exc, "detail", None) or str(exc)
+            for number, _ in members:
+                results[number] = {"row": number, "status": "error", "detail": str(detail)[:120]}
+
+    ordered = [results[n] for n in sorted(results)]
+    return {
+        "created": sum(r["status"] == "created" for r in ordered),
+        "existing": sum(r["status"] == "exists" for r in ordered),
+        "failed": sum(r["status"] == "error" for r in ordered),
+        "rows": ordered,
+    }

@@ -32,6 +32,8 @@ class PupilScanResult(BaseModel):
     detail: str | None = None
     event_id: uuid.UUID | None = None
     type: str | None = None
+    student_id: uuid.UUID | None = None
+    has_photo: bool = False
     student_name: str | None = None
     grade: str | None = None
     scanned_at: datetime | None = None
@@ -49,3 +51,6 @@ class PupilRosterEntry(BaseModel):
     id: uuid.UUID
     name: str
     grade: str | None = None
+    # md5 of the stored photo (null if none): lets the gate device re-download
+    # a photo only when it actually changed.
+    photo_hash: str | None = None

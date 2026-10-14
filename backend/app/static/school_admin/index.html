@@ -434,6 +434,27 @@
       <button onclick="printPupilCards(null, this)">Print all cards</button>
       <button class="secondary" onclick="printPupilCards(document.getElementById('pupil-filter').value.trim(), this)">Print one class (type its exact name)</button>
     </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; margin-bottom:16px;">
+      <div style="border:1.5px dashed var(--border-strong); border-radius:var(--radius-sm); padding:12px;">
+        <div style="font-weight:600; font-size:13px; margin-bottom:4px;">Import pupils from a spreadsheet</div>
+        <div style="font-size:12px; color:var(--text-faint); margin-bottom:8px;">Save your list as a CSV file (Excel: File &rarr; Save As &rarr; CSV). Columns: pupil name, class, parent name, parent email, parent phone. Parent columns are optional. Safe to upload again: existing pupils are skipped.</div>
+        <div class="row-actions">
+          <button class="secondary" onclick="downloadImportTemplate()">Download template</button>
+          <button onclick="document.getElementById('import-file').click()">Choose CSV…</button>
+        </div>
+        <input type="file" id="import-file" accept=".csv,text/csv" style="display:none;" onchange="importPupilsFromCsv(this)" />
+        <div id="import-result" style="font-size:12.5px; margin-top:8px;"></div>
+      </div>
+      <div style="border:1.5px dashed var(--border-strong); border-radius:var(--radius-sm); padding:12px;">
+        <div style="font-weight:600; font-size:13px; margin-bottom:4px;">Upload photos in bulk</div>
+        <div style="font-size:12px; color:var(--text-faint); margin-bottom:8px;">Select many photos at once. Name each file after the pupil, e.g. <em>Ada Obi.jpg</em> or <em>ada_obi.png</em>.</div>
+        <div class="row-actions">
+          <button onclick="document.getElementById('bulk-photo-files').click()">Choose photos…</button>
+        </div>
+        <input type="file" id="bulk-photo-files" accept="image/*" multiple style="display:none;" onchange="uploadBulkPhotos(this)" />
+        <div id="bulk-photo-result" style="font-size:12.5px; margin-top:8px;"></div>
+      </div>
+    </div>
     <div id="pupil-cards-list"><p class="empty">Loading…</p></div>
   </div>
 
@@ -642,6 +663,115 @@
       }
     };
     input.click();
+  }
+
+
+  // ---- CSV import + bulk photos (pupil mode) ----
+  function parseCsv(text) {
+    const rows = [];
+    let row = [], cur = "", quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (quoted) {
+        if (ch === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+        else if (ch === '"') quoted = false;
+        else cur += ch;
+      } else if (ch === '"') quoted = true;
+      else if (ch === "," || ch === ";") { row.push(cur); cur = ""; }
+      else if (ch === "\n" || ch === "\r") {
+        if (ch === "\r" && text[i + 1] === "\n") i++;
+        row.push(cur); cur = "";
+        if (row.some((c) => c.trim() !== "")) rows.push(row);
+        row = [];
+      } else cur += ch;
+    }
+    row.push(cur);
+    if (row.some((c) => c.trim() !== "")) rows.push(row);
+    return rows;
+  }
+
+  const IMPORT_COLUMNS = {
+    pupil_name: ["pupilname", "pupil", "studentname", "student", "childname", "child", "name"],
+    grade: ["class", "grade", "classname"],
+    guardian_name: ["parentname", "guardianname", "parent", "guardian"],
+    guardian_email: ["parentemail", "guardianemail", "email"],
+    guardian_phone: ["parentphone", "guardianphone", "parentphonenumber", "phonenumber", "phone"],
+  };
+
+  function downloadImportTemplate() {
+    const csv = "pupil_name,class,parent_name,parent_email,parent_phone\nAda Obi,Primary 3,Mrs Obi,mrs.obi@example.com,08012345678\nTunde Bello,Primary 1,,,\n";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "pupil-import-template.csv";
+    a.click();
+  }
+
+  async function importPupilsFromCsv(input) {
+    const out = document.getElementById("import-result");
+    const file = input.files[0];
+    input.value = "";
+    if (!file) return;
+    const table = parseCsv((await file.text()).replace(/^\uFEFF/, ""));
+    if (table.length < 2) { out.textContent = "That file has no pupil rows."; return; }
+    const headers = table[0].map((h) => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    const index = {};
+    for (const [field, names] of Object.entries(IMPORT_COLUMNS)) {
+      const found = names.map((n) => headers.indexOf(n)).find((i) => i >= 0);
+      index[field] = found === undefined ? -1 : found;
+    }
+    if (index.pupil_name < 0) { out.textContent = "Could not find a pupil name column. Use the template's headings."; return; }
+    const cell = (r, f) => (index[f] >= 0 && r[index[f]] !== undefined ? r[index[f]].trim() : "");
+    const rows = table.slice(1).map((r) => ({
+      pupil_name: cell(r, "pupil_name"),
+      grade: cell(r, "grade") || null,
+      guardian_name: cell(r, "guardian_name") || null,
+      guardian_email: cell(r, "guardian_email") || null,
+      guardian_phone: cell(r, "guardian_phone") || null,
+    }));
+
+    let created = 0, existing = 0;
+    const problems = [];
+    for (let start = 0; start < rows.length; start += 100) {
+      out.textContent = `Importing… ${Math.min(start + 100, rows.length)} of ${rows.length}`;
+      try {
+        const result = await apiFetch("/pupil-cards/import", { method: "POST", body: JSON.stringify({ rows: rows.slice(start, start + 100) }) });
+        created += result.created;
+        existing += result.existing;
+        result.rows.filter((r) => r.status === "error").forEach((r) => problems.push(`Row ${start + r.row + 1}: ${r.detail}`));
+      } catch (e) {
+        problems.push(`Rows ${start + 2}–${start + 101}: ${e.message}`);
+      }
+    }
+    out.innerHTML = `<strong>${created}</strong> added, <strong>${existing}</strong> already there, <strong>${problems.length}</strong> problem(s).` +
+      (problems.length ? "<ul style='margin:6px 0 0 18px;'>" + problems.slice(0, 15).map((p) => `<li>${escapeAttr(p)}</li>`).join("") + (problems.length > 15 ? "<li>…and more</li>" : "") + "</ul>" : "");
+    log(`Import finished: ${created} added, ${existing} already existed, ${problems.length} problem(s).`, problems.length === 0);
+    loadPupilCards();
+  }
+
+  function photoKey(text) {
+    return text.toLowerCase().replace(/\.[a-z0-9]+$/, "").replace(/[_\-.]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  async function uploadBulkPhotos(input) {
+    const out = document.getElementById("bulk-photo-result");
+    const files = Array.from(input.files);
+    input.value = "";
+    if (!files.length) return;
+    const byName = {};
+    (window.__pupils || []).forEach((p) => { (byName[photoKey(p.name)] = byName[photoKey(p.name)] || []).push(p); });
+    let saved = 0;
+    const unmatched = [];
+    for (let i = 0; i < files.length; i++) {
+      out.textContent = `Uploading… ${i + 1} of ${files.length}`;
+      const matches = byName[photoKey(files[i].name)] || [];
+      if (matches.length !== 1) { unmatched.push(files[i].name + (matches.length > 1 ? " (several pupils share this name)" : "")); continue; }
+      try { await uploadPupilPhoto(matches[0].student_id, files[i]); saved++; }
+      catch (e) { unmatched.push(`${files[i].name} (${e.message})`); }
+    }
+    out.innerHTML = `<strong>${saved}</strong> photo(s) saved, <strong>${unmatched.length}</strong> not matched.` +
+      (unmatched.length ? "<ul style='margin:6px 0 0 18px;'>" + unmatched.slice(0, 15).map((n) => `<li>${escapeAttr(n)}</li>`).join("") + (unmatched.length > 15 ? "<li>…and more</li>" : "") + "</ul>" : "");
+    log(`Bulk photos: ${saved} saved, ${unmatched.length} not matched.`, unmatched.length === 0);
+    loadPupilCards();
   }
 
   async function openPdf(path, okMessage, failMessage, buttonEl) {

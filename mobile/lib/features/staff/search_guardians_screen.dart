@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -21,6 +23,93 @@ class _SearchGuardiansScreenState extends State<SearchGuardiansScreen> {
   bool _loading = false;
   String? _error;
   String? _busyId;
+  // Schools in pupil-card mode print a card per pupil (with a photo) instead
+  // of a QR card per guardian.
+  bool _pupilMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMode();
+  }
+
+  Future<void> _loadMode() async {
+    try {
+      final profile = await widget.apiClient.getSchoolProfile();
+      if (mounted) setState(() => _pupilMode = profile['credential_mode'] == 'pupil');
+    } catch (_) {
+      // Leave the default (guardian mode) if the profile can't be loaded.
+    }
+  }
+
+  Future<void> _setPhoto(String studentId, String name) async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: Text('Take a photo of $name'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.pop(sheetContext, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+
+    setState(() {
+      _busyId = studentId;
+      _error = null;
+    });
+    try {
+      final picked = await ImagePicker().pickImage(source: source, maxWidth: 1400, imageQuality: 85);
+      if (picked == null) return;
+      await widget.apiClient.uploadPupilPhoto(studentId, await picked.readAsBytes(), filename: picked.name);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Photo saved for $name.')));
+      }
+    } on PlatformException catch (e) {
+      setState(() => _error = e.code.contains('denied')
+          ? 'Camera access is off. Allow it in your phone settings, or choose a photo from the gallery.'
+          : 'Could not open the camera/gallery: ${e.message ?? e.code}');
+    } catch (e) {
+      setState(() => _error = 'Could not save the photo: $e');
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
+
+  Future<void> _printPupilCard(String studentId, String name) async {
+    setState(() {
+      _busyId = studentId;
+      _error = null;
+    });
+    try {
+      final bytes = await widget.apiClient.downloadPupilCardPdf(studentId);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/${name.replaceAll(RegExp(r'\s+'), '_')}-pupil-card.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        subject: '$name pupil card',
+        sharePositionOrigin: box != null ? box.localToGlobal(Offset.zero) & box.size : null,
+      );
+    } catch (e) {
+      setState(() => _error = 'Could not get the pupil card: $e');
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
+  }
 
   Future<void> _search() async {
     setState(() {
@@ -292,11 +381,12 @@ class _SearchGuardiansScreenState extends State<SearchGuardiansScreen> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.print, size: 18),
-                  label: const Text('Print QR'),
-                  onPressed: busy ? null : () => _printCredential(id, name),
-                ),
+                if (!_pupilMode)
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.print, size: 18),
+                    label: const Text('Print QR'),
+                    onPressed: busy ? null : () => _printCredential(id, name),
+                  ),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.mail_outline, size: 18),
                   label: const Text('Resend activation'),
@@ -350,6 +440,18 @@ class _SearchGuardiansScreenState extends State<SearchGuardiansScreen> {
       child: Row(
         children: [
           Expanded(child: Text(grade != null && grade.isNotEmpty ? '$name · $grade' : name)),
+          if (_pupilMode) ...[
+            IconButton(
+              icon: const Icon(Icons.photo_camera, size: 18),
+              onPressed: busy ? null : () => _setPhoto(studentId, name),
+              tooltip: 'Add/change photo',
+            ),
+            IconButton(
+              icon: const Icon(Icons.print, size: 18),
+              onPressed: busy ? null : () => _printPupilCard(studentId, name),
+              tooltip: 'Print pupil card',
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.edit, size: 18),
             onPressed: busy ? null : () => _editChild(child),

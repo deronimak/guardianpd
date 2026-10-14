@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path_provider/path_provider.dart';
@@ -11,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 ///    who just tapped with no signal.
 ///  - [rejected]: scans the server refused on sync, kept so staff can see
 ///    what needs a manual record instead of it silently disappearing.
+///  - pupil photos: cached as small files so the gate screen can show the
+///    child's face (to compare with the card) even with no signal.
 ///  - [credentialMode]: the school's mode, so the right home screen shows
 ///    even when the profile call can't be made.
 ///
@@ -30,6 +33,9 @@ class OfflineScanStore {
   List<Map<String, dynamic>> queue = [];
   List<Map<String, dynamic>> rejected = [];
   Map<String, Map<String, dynamic>> roster = {};
+  // pupil id -> md5 of the photo we have cached, to re-download only on change.
+  Map<String, String> photoHashes = {};
+  final Map<String, Uint8List> _photoMemory = {};
   String? credentialMode;
 
   Future<void> _writeChain = Future.value();
@@ -58,6 +64,7 @@ class OfflineScanStore {
           (k, v) => MapEntry(k as String, (v as Map).cast<String, dynamic>()),
         );
         credentialMode = data['credential_mode'] as String?;
+        photoHashes = (data['photo_hashes'] as Map? ?? {}).map((k, v) => MapEntry(k as String, v as String));
       }
     } catch (_) {
       // A corrupt/unreadable file must never stop scanning: start empty.
@@ -71,6 +78,7 @@ class OfflineScanStore {
       'rejected': rejected,
       'roster': roster,
       'credential_mode': credentialMode,
+      'photo_hashes': photoHashes,
     });
     _writeChain = _writeChain.then((_) async {
       try {
@@ -117,6 +125,45 @@ class OfflineScanStore {
     roster = {for (final e in entries) e['id'] as String: e};
     await _save();
   }
+
+  Future<Directory?> _photoDirectory() async {
+    if (kIsWeb) return null;
+    final base = await getApplicationDocumentsDirectory();
+    final dir = Directory('${base.path}/guardianpd_photos_$schoolSlug');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
+  }
+
+  Future<Uint8List?> readPhoto(String pupilId) async {
+    final cached = _photoMemory[pupilId];
+    if (cached != null) return cached;
+    try {
+      final dir = await _photoDirectory();
+      if (dir == null) return null;
+      final file = File('${dir.path}/$pupilId.jpg');
+      if (!await file.exists()) return null;
+      final bytes = await file.readAsBytes();
+      _photoMemory[pupilId] = bytes;
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> savePhoto(String pupilId, Uint8List bytes, String? hash) async {
+    _photoMemory[pupilId] = bytes;
+    if (hash != null) photoHashes[pupilId] = hash;
+    try {
+      final dir = await _photoDirectory();
+      if (dir != null) await File('${dir.path}/$pupilId.jpg').writeAsBytes(bytes, flush: true);
+    } catch (_) {}
+    await _save();
+  }
+
+  /// Pupils whose photo exists on the server but isn't cached yet (or has changed).
+  List<Map<String, dynamic>> pupilsNeedingPhoto() => roster.values
+      .where((p) => p['photo_hash'] != null && photoHashes[p['id']] != p['photo_hash'])
+      .toList();
 
   Future<void> setCredentialMode(String mode) async {
     credentialMode = mode;

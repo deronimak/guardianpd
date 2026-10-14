@@ -41,6 +41,7 @@ class SchoolOut(BaseModel):
     billing_email: str | None
     archived_at: datetime | None = None
     credential_mode: str = "guardian"
+    sms_enabled: bool = False
 
 
 class SchoolWithSubscriptionOut(BaseModel):
@@ -56,6 +57,7 @@ class SchoolWithSubscriptionOut(BaseModel):
     subscription_status: str
     archived_at: datetime | None = None
     credential_mode: str = "guardian"
+    sms_enabled: bool = False
 
 
 class SchoolDetailOut(BaseModel):
@@ -85,6 +87,7 @@ class SchoolDetailOut(BaseModel):
     archived_at: datetime | None = None
     has_logo: bool = False
     credential_mode: str = "guardian"
+    sms_enabled: bool = False
 
 
 class SchoolProfileOut(BaseModel):
@@ -98,6 +101,7 @@ class SchoolProfileOut(BaseModel):
     # "guardian" or "pupil" — tells the School Admin console and the staff
     # scanner which card flow this school uses (School.credential_mode).
     credential_mode: str = "guardian"
+    sms_enabled: bool = False
 
 
 class SchoolUpdateRequest(BaseModel):
@@ -113,6 +117,7 @@ class SchoolUpdateRequest(BaseModel):
     billing_email: EmailStr | None = None
     timezone: str | None = None
     credential_mode: Literal["guardian", "pupil"] | None = None
+    sms_enabled: bool | None = None
 
     @field_validator("timezone")
     @classmethod

@@ -77,13 +77,14 @@ export function SchoolDetailPage() {
     null
   );
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState<{ name: string; address: string; phone: string; billing_email: string; timezone: string; credential_mode: "guardian" | "pupil" }>({
+  const [editForm, setEditForm] = useState<{ name: string; address: string; phone: string; billing_email: string; timezone: string; credential_mode: "guardian" | "pupil"; sms_enabled: boolean }>({
     name: "",
     address: "",
     phone: "",
     billing_email: "",
     timezone: "",
     credential_mode: "guardian",
+    sms_enabled: false,
   });
 
   const [subscriptionForm, setSubscriptionForm] = useState<{
@@ -149,6 +150,7 @@ export function SchoolDetailPage() {
       billing_email: school.billing_email ?? "",
       timezone: school.timezone,
       credential_mode: school.credential_mode ?? "guardian",
+      sms_enabled: school.sms_enabled ?? false,
     });
     setEditOpen(true);
   };
@@ -519,6 +521,10 @@ export function SchoolDetailPage() {
                 <Calendar className="size-4 text-gray-400" />
                 Cards: {school.credential_mode === "pupil" ? "Pupil ID cards" : "Guardian QR cards"}
               </div>
+              <div className="flex items-center gap-2.5 text-sm text-gray-600">
+                <Mail className="size-4 text-gray-400" />
+                SMS alerts: {school.sms_enabled ? "On" : "Off"}
+              </div>
             </CardBody>
           </Card>
 
@@ -634,6 +640,20 @@ export function SchoolDetailPage() {
             <p className="mt-1.5 text-xs text-gray-500">
               Pupil mode: each pupil gets their own card, scanned at arrival and departure, and parents are notified
               automatically. Choose before the school prints cards; the school prints pupil cards from its admin console.
+            </p>
+          </div>
+          <div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={editForm.sms_enabled}
+                onChange={(e) => setEditForm((p) => ({ ...p, sms_enabled: e.target.checked }))}
+              />
+              SMS alerts for parents without the app
+            </label>
+            <p className="mt-1.5 text-xs text-gray-500">
+              Texts the arrival/departure alert to guardians who have a phone number but no app registered. Each SMS is
+              billed by the SMS provider, so switch on per school only once SMS is set up on the server.
             </p>
           </div>
         </div>

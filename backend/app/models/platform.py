@@ -68,6 +68,9 @@ class School(PlatformBase):
     # pupil-card endpoints (app/api/routes/pupil_cards.py, POST
     # /attendance/pupil-scan) refuse to run for a school left on "guardian".
     credential_mode: Mapped[str] = mapped_column(String(20), default="guardian", server_default="guardian")
+    # Opt-in SMS alerts to guardians who have a phone number but no app
+    # registered for push (see app/core/sms.py). Off by default: each SMS costs money.
+    sms_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class Subscription(PlatformBase):

@@ -42,4 +42,15 @@ void main() {
     expect(store.rejected, hasLength(1));
     expect(store.rejected.first['detail'], contains('replaced'));
   });
+  test('only pupils whose cached photo is missing or out of date need a download', () async {
+    final store = OfflineScanStore.forSchool('unit-test-photos');
+    await store.load();
+    store.roster = {
+      'a': {'id': 'a', 'name': 'A', 'photo_hash': 'h1'},
+      'b': {'id': 'b', 'name': 'B', 'photo_hash': 'h2'},
+      'c': {'id': 'c', 'name': 'C', 'photo_hash': null},
+    };
+    store.photoHashes = {'a': 'h1', 'b': 'old'};
+    expect(store.pupilsNeedingPhoto().map((p) => p['id']), ['b']);
+  });
 }

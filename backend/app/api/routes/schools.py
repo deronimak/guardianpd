@@ -110,6 +110,7 @@ def list_schools(
                 "subscription_status": subscription.status if subscription else "none",
                 "archived_at": school.archived_at,
                 "credential_mode": school.credential_mode,
+                "sms_enabled": school.sms_enabled,
             }
         )
     return result
@@ -165,6 +166,7 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
         "archived_at": school.archived_at,
         "has_logo": school.logo is not None,
         "credential_mode": school.credential_mode,
+        "sms_enabled": school.sms_enabled,
     }
 
 

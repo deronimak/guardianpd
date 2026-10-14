@@ -69,27 +69,10 @@ def _activation_email(school_name: str, email: str, invite_token: str) -> None:
         logger.exception("could not send activation email to %s", email)
 
 
-@router.post("", response_model=GuardianOut, status_code=201, dependencies=[Depends(require_school_admin)])
-def create_guardian(
-    payload: GuardianCreateRequest,
-    school: School = Depends(get_school),
-    claims: dict = Depends(get_current_staff),
-) -> dict:
-    """School-Admin-initiated combined enrollment (GuardianPD spec): creates
-    the guardian, their printed QR credential, and up to 10 named children
-    in one atomic transaction — replacing the old two-step "create guardian"
-    then "link to student" flow as the primary enrollment path (that flow
-    still exists at POST /students + POST /students/{id}/guardians/{id} for
-    linking an *existing* guardian to an *additional* already-enrolled
-    student later).
-
-    Writes to two physical databases (platform_db for the identity +
-    membership rows, tenant_db for the guardian/children/QR credential) as a
-    single atomic unit via two-phase commit (app/db/twophase.py) — either
-    everything exists or nothing does. The invite email is sent only after
-    commit succeeds, so a parent never gets an activation code for a
-    guardian record that didn't actually get created.
-    """
+def enroll_guardian(school: School, claims: dict, payload: GuardianCreateRequest) -> tuple[dict, str | None]:
+    """The transactional core of POST /guardians, shared with the bulk pupil
+    import (pupil_cards.py). Returns (response dict, invite_token or None);
+    the caller sends the activation email once this has committed."""
     db = get_twophase_session(school.tenant_db_name)
     try:
         platform_user = db.query(PlatformUser).filter_by(email=payload.email).first()
@@ -150,10 +133,34 @@ def create_guardian(
     finally:
         db.close()
 
+    return {"id": guardian.id, "name": guardian.name, "qr_token": token, "children": children_out}, invite_token
+
+
+@router.post("", response_model=GuardianOut, status_code=201, dependencies=[Depends(require_school_admin)])
+def create_guardian(
+    payload: GuardianCreateRequest,
+    school: School = Depends(get_school),
+    claims: dict = Depends(get_current_staff),
+) -> dict:
+    """School-Admin-initiated combined enrollment (GuardianPD spec): creates
+    the guardian, their printed QR credential, and up to 10 named children
+    in one atomic transaction — replacing the old two-step "create guardian"
+    then "link to student" flow as the primary enrollment path (that flow
+    still exists at POST /students + POST /students/{id}/guardians/{id} for
+    linking an *existing* guardian to an *additional* already-enrolled
+    student later).
+
+    Writes to two physical databases (platform_db for the identity +
+    membership rows, tenant_db for the guardian/children/QR credential) as a
+    single atomic unit via two-phase commit (app/db/twophase.py) — either
+    everything exists or nothing does. The invite email is sent only after
+    commit succeeds, so a parent never gets an activation code for a
+    guardian record that didn't actually get created.
+    """
+    result, invite_token = enroll_guardian(school, claims, payload)
     if invite_token is not None:
         _activation_email(school.name, payload.email, invite_token)
-
-    return {"id": guardian.id, "name": guardian.name, "qr_token": token, "children": children_out}
+    return result
 
 
 @router.get("", response_model=list[GuardianSummaryOut], dependencies=[Depends(require_school_admin)])

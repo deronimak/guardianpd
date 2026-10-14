@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -14,7 +15,9 @@ class _ScanFeedback {
   final String title;
   final String? subtitle;
   final String? note;
-  const _ScanFeedback(this.outcome, this.title, {this.subtitle, this.note});
+  // The child's face, so gate staff can compare it with who is standing there.
+  final Uint8List? photo;
+  const _ScanFeedback(this.outcome, this.title, {this.subtitle, this.note, this.photo});
 }
 
 /// Scans pupil ID cards. Works for both a staff member scanning with their
@@ -45,6 +48,10 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   bool _ready = false;
   bool _online = true;
   bool _sessionExpired = false;
+  bool _syncingPhotos = false;
+  // Station mode is locked with a PIN chosen by the staff member who starts
+  // it; kept only in memory, so closing the app also ends station mode.
+  String? _stationPin;
 
   // Same card seen again by the camera within this window is ignored client
   // side (the camera reads a held card many times a second). The server has
@@ -60,6 +67,10 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
 
   Future<void> _init() async {
     await _store.load();
+    if (_station && !await _ensurePin()) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     if (mounted) setState(() => _ready = true);
     unawaited(_refreshRoster());
     unawaited(_syncQueue());
@@ -90,9 +101,99 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
       final roster = await widget.apiClient.pupilRoster();
       await _store.setRoster(roster);
       if (mounted) setState(() => _online = true);
+      unawaited(_syncPhotos());
     } catch (e) {
       if (e is ApiException && e.statusCode == 401) _sessionExpired = true;
     }
+  }
+
+  /// Downloads pupil photos we don't have yet (or that changed), one at a
+  /// time in the background, so they show at the gate even when offline.
+  Future<void> _syncPhotos() async {
+    if (_syncingPhotos) return;
+    _syncingPhotos = true;
+    try {
+      for (final pupil in _store.pupilsNeedingPhoto()) {
+        final bytes = await widget.apiClient.fetchPupilPhoto(pupil['id'] as String);
+        if (bytes != null) await _store.savePhoto(pupil['id'] as String, bytes, pupil['photo_hash'] as String?);
+      }
+    } catch (_) {
+      // Offline or a hiccup: the rest is picked up on the next sync.
+    } finally {
+      _syncingPhotos = false;
+    }
+  }
+
+  Future<Uint8List?> _photoFor(String? pupilId, bool serverHasPhoto) async {
+    if (pupilId == null) return null;
+    final cached = await _store.readPhoto(pupilId);
+    if (cached != null || !serverHasPhoto) return cached;
+    try {
+      final bytes = await widget.apiClient.fetchPupilPhoto(pupilId).timeout(const Duration(seconds: 3));
+      if (bytes != null) await _store.savePhoto(pupilId, bytes, null);
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Asks the supervising staff member to choose a PIN for station mode.
+  /// Returns false if they cancel.
+  Future<bool> _ensurePin() async {
+    if (_stationPin != null) return true;
+    final first = TextEditingController();
+    final second = TextEditingController();
+    String? error;
+    final pin = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Set a station PIN'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('You will need this PIN to leave station mode. Do not share it with pupils.'),
+              TextField(
+                controller: first,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                maxLength: 4,
+                decoration: const InputDecoration(labelText: '4-digit PIN', counterText: ''),
+              ),
+              TextField(
+                controller: second,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                maxLength: 4,
+                decoration: const InputDecoration(labelText: 'Repeat PIN', counterText: ''),
+              ),
+              if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: const TextStyle(color: Colors.red))),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () {
+                if (!RegExp(r'^\d{4}$').hasMatch(first.text)) {
+                  setLocal(() => error = 'Enter exactly 4 digits');
+                } else if (first.text != second.text) {
+                  setLocal(() => error = 'The PINs do not match');
+                } else {
+                  Navigator.pop(ctx, first.text);
+                }
+              },
+              child: const Text('Start'),
+            ),
+          ],
+        ),
+      ),
+    );
+    first.dispose();
+    second.dispose();
+    if (pin == null) return false;
+    _stationPin = pin;
+    return true;
   }
 
   Future<void> _syncQueue() async {
@@ -144,8 +245,9 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
       final name = result['student_name'] as String? ?? 'Pupil';
       final grade = result['grade'] as String?;
       if (mounted) setState(() => _online = true);
+      final photo = await _photoFor(result['student_id'] as String?, result['has_photo'] == true);
       if (result['status'] == 'duplicate') {
-        _show(_ScanFeedback(_Outcome.duplicate, name, subtitle: grade, note: 'Already scanned a moment ago'));
+        _show(_ScanFeedback(_Outcome.duplicate, name, subtitle: grade, note: 'Already scanned a moment ago', photo: photo));
       } else {
         final arriving = result['type'] == 'drop_off';
         _show(_ScanFeedback(
@@ -153,6 +255,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
           name,
           subtitle: grade,
           note: arriving ? 'Arrived at school' : 'Leaving school',
+          photo: photo,
         ));
       }
       unawaited(_syncQueue());
@@ -177,10 +280,13 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   Future<void> _saveOffline(String token, DateTime when, {String? reason}) async {
     await _store.enqueue(token, when);
     final name = _store.nameForToken(token);
+    final pupilId = OfflineScanStore.pupilIdFromToken(token);
+    final photo = pupilId == null ? null : await _store.readPhoto(pupilId);
     _show(_ScanFeedback(
       _Outcome.saved,
       name ?? 'Card saved',
-      subtitle: _store.roster[OfflineScanStore.pupilIdFromToken(token)]?['grade'] as String?,
+      photo: photo,
+      subtitle: _store.roster[pupilId]?['grade'] as String?,
       note: reason ?? 'No connection: saved on this device and will upload automatically',
     ));
   }
@@ -195,17 +301,45 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   }
 
   Future<void> _exitStation() async {
+    final pinController = TextEditingController();
+    bool wrong = false;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Leave station mode?'),
-        content: const Text('Only do this if you are the member of staff supervising the gate.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Leave')),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Leave station mode?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Enter the station PIN. Only the member of staff supervising the gate should leave this screen.'),
+              TextField(
+                controller: pinController,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                maxLength: 4,
+                autofocus: true,
+                decoration: InputDecoration(labelText: 'PIN', counterText: '', errorText: wrong ? 'Wrong PIN' : null),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
+            TextButton(
+              onPressed: () {
+                if (pinController.text == _stationPin) {
+                  Navigator.pop(ctx, true);
+                } else {
+                  pinController.clear();
+                  setLocal(() => wrong = true);
+                }
+              },
+              child: const Text('Leave'),
+            ),
+          ],
+        ),
       ),
     );
+    pinController.dispose();
     if (ok == true && mounted) {
       setState(() => _station = false);
       Navigator.of(context).pop();
@@ -278,7 +412,9 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
               IconButton(
                 tooltip: 'Station mode',
                 icon: const Icon(Icons.lock_outline),
-                onPressed: () => setState(() => _station = true),
+                onPressed: () async {
+                  if (await _ensurePin() && mounted) setState(() => _station = true);
+                },
               ),
           ],
         ),
@@ -354,7 +490,16 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: Colors.white, size: 88),
+            if (f.photo != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 4), borderRadius: BorderRadius.circular(16)),
+                  child: Image.memory(f.photo!, width: 150, height: 188, fit: BoxFit.cover, gaplessPlayback: true),
+                ),
+              )
+            else
+              Icon(icon, color: Colors.white, size: 88),
             const SizedBox(height: 16),
             Text(
               f.title,

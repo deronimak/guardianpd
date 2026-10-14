@@ -46,7 +46,9 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>GuardianPD needs camera access to scan guardian QR codes for school drop-off and pick-up attendance.</string>
+	<string>GuardianPD needs camera access to scan QR codes for school attendance and to take pupil ID photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>GuardianPD needs access to your photos so you can choose a pupil's ID card photo.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIBackgroundModes</key>

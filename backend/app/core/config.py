@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     # SMTP above. See app/core/push.py.
     firebase_credentials_json: str = ""
 
+    # SMS alerts for parents without the app (Termii by default — a
+    # Nigerian SMS provider). Needs your own Termii account + an approved
+    # sender ID; blank by default so sends are logged instead, same fallback
+    # as email/push above. SMS_BASE_URL is the host shown in your Termii
+    # dashboard. SMS_CHANNEL: "generic" or "dnd" (dnd reaches numbers on Do
+    # Not Disturb but needs approval from Termii). See app/core/sms.py.
+    sms_api_key: str = ""
+    sms_sender_id: str = "GuardianPD"
+    sms_base_url: str = "https://api.ng.termii.com"
+    sms_channel: str = "generic"
+
     # Paystack billing (ARCHITECTURE.md §4). Requires your own Paystack
     # account/API key — checkout-session creation returns a clear 501 until
     # paystack_secret_key is set (there's no meaningful "fake" checkout URL

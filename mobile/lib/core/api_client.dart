@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:http/http.dart' as http;
@@ -341,6 +342,47 @@ class ApiClient {
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return (body['results'] as List).cast<Map<String, dynamic>>();
+  }
+
+  /// The pupil's card photo (JPEG bytes) for the gate screen, or null if
+  /// they have none yet.
+  Future<Uint8List?> fetchPupilPhoto(String studentId) async {
+    final response = await http
+        .get(Uri.parse('$baseUrl/attendance/pupil-photo/$studentId'), headers: _headers(authenticated: true))
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return response.bodyBytes;
+  }
+
+  /// School Admin: sets a pupil's ID-card photo (the server crops and
+  /// compresses it).
+  Future<void> uploadPupilPhoto(String studentId, List<int> bytes, {String filename = 'photo.jpg'}) async {
+    final request = http.MultipartRequest('PUT', Uri.parse('$baseUrl/pupil-cards/$studentId/photo'))
+      ..headers.addAll({
+        'X-School-Slug': schoolSlug,
+        if (_staffToken != null) 'Authorization': 'Bearer $_staffToken',
+      })
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    final streamed = await request.send().timeout(const Duration(seconds: 60));
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+  }
+
+  /// School Admin: one pupil's printable card (front + back) as a PDF.
+  Future<List<int>> downloadPupilCardPdf(String studentId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/pupil-cards/$studentId/card.pdf'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return response.bodyBytes;
   }
 
   /// Names/classes of pupils with active cards, cached for offline use.

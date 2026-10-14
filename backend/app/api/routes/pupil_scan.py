@@ -13,9 +13,11 @@ gate, not when the phone reconnected.
 """
 
 import datetime as dt
+import uuid
 import zoneinfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_staff, get_tenant_db, require_active_subscription
@@ -129,6 +131,8 @@ def _record_pupil_scan(
             detail="Already scanned a moment ago",
             event_id=near.id,
             type=near.type,
+            student_id=student.id,
+            has_photo=student.photo is not None,
             student_name=student.name,
             grade=student.grade,
             scanned_at=near.timestamp,
@@ -147,23 +151,29 @@ def _record_pupil_scan(
     tenant_db.commit()
 
     action = "arrived at school" if event_type == "drop_off" else "left school"
-    body = f"{student.name} {action}"
+    core = f"{student.name} {action}"
     if now - when > LATE_NOTICE_AFTER:
-        body += f" at {when.astimezone(tz).strftime('%I:%M %p').lstrip('0')} (recorded earlier, delivered late)"
+        at = f" at {when.astimezone(tz).strftime('%I:%M %p').lstrip('0')}"
+        body = f"{core}{at} (recorded earlier, delivered late)."
     else:
-        body += f" ({school.name})"
+        at = ""
+        body = f"{core} ({school.name})."
     _push_to_guardians(
         tenant_db,
         _guardians_for_student(tenant_db, student.id),
         event.id,
         title=f"{student.name} {action}",
-        body=body + ".",
+        body=body,
+        school=school,
+        sms_text=f"{core}{at}. - {school.name}",
     )
 
     return PupilScanResult(
         status="recorded",
         event_id=event.id,
         type=event_type,
+        student_id=student.id,
+        has_photo=student.photo is not None,
         student_name=student.name,
         grade=student.grade,
         scanned_at=when,
@@ -225,10 +235,27 @@ def pupil_roster(
     """
     _require_pupil_mode(school)
     rows = (
-        tenant_db.query(Student)
+        tenant_db.query(Student.id, Student.name, Student.grade, func.md5(Student.photo))
         .join(StudentCredential, StudentCredential.student_id == Student.id)
         .filter(StudentCredential.revoked_at.is_(None))
         .order_by(Student.name)
         .all()
     )
-    return [{"id": s.id, "name": s.name, "grade": s.grade} for s in rows]
+    return [{"id": sid, "name": name, "grade": grade, "photo_hash": photo_hash} for sid, name, grade, photo_hash in rows]
+
+
+@router.get("/pupil-photo/{student_id}")
+def pupil_photo(
+    student_id: uuid.UUID,
+    school: School = Depends(require_active_subscription),
+    staff: dict = Depends(get_current_staff),
+    tenant_db: Session = Depends(get_tenant_db),
+) -> Response:
+    """The pupil's card photo, for the gate screen so staff can compare the
+    child in front of them with the card. Any signed-in staff member (the
+    admin-only /pupil-cards routes are for managing cards, not scanning)."""
+    _require_pupil_mode(school)
+    student = tenant_db.get(Student, student_id)
+    if student is None or student.photo is None:
+        raise HTTPException(status_code=404, detail="No photo for this pupil")
+    return Response(content=student.photo, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
