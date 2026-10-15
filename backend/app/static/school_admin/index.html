@@ -458,6 +458,26 @@
     <div id="pupil-cards-list"><p class="empty">Loading…</p></div>
   </div>
 
+  <div class="panel" id="pupil-attendance-panel" style="display:none;">
+    <div class="panel-head">
+      <h2>Pupil attendance <span class="hint">arrivals and departures from pupil cards</span></h2>
+    </div>
+    <div class="row-actions" style="margin-bottom:14px; align-items:center;">
+      <input type="date" id="pa-day" onchange="loadPupilAttendance()" style="padding:9px 12px; border:1.5px solid var(--border-strong); border-radius:var(--radius-sm); font-size:13.5px; font-family:var(--font);" />
+      <select id="pa-status" onchange="renderPupilAttendance()" style="padding:9px 12px; border:1.5px solid var(--border-strong); border-radius:var(--radius-sm); font-size:13.5px; font-family:var(--font);">
+        <option value="all">Everyone</option>
+        <option value="not_arrived">Not arrived</option>
+        <option value="present">At school now</option>
+        <option value="left">Left</option>
+      </select>
+      <input type="text" id="pa-filter" placeholder="Filter by name or class" oninput="renderPupilAttendance()" style="flex:1; min-width:160px; padding:9px 12px; border:1.5px solid var(--border-strong); border-radius:var(--radius-sm); font-size:13.5px; font-family:var(--font);" />
+      <button class="secondary" onclick="loadPupilAttendance()">Refresh</button>
+      <button class="secondary" onclick="downloadPupilAttendanceCsv()">Download CSV</button>
+    </div>
+    <div id="pa-summary" style="font-size:13px; margin-bottom:10px;"></div>
+    <div id="pa-list"><p class="empty">Loading…</p></div>
+  </div>
+
   <div class="panel">
     <div class="panel-head">
       <h2>Search guardians <span class="hint">GET /guardians</span></h2>
@@ -597,7 +617,55 @@
   function applyCredentialMode() {
     document.getElementById("pupil-cards-panel").style.display = isPupilMode() ? "" : "none";
     renderChildInputs();
-    if (isPupilMode()) loadPupilCards();
+    document.getElementById("pupil-attendance-panel").style.display = isPupilMode() ? "" : "none";
+    if (isPupilMode()) { loadPupilCards(); loadPupilAttendance(); }
+  }
+
+  async function loadPupilAttendance() {
+    const day = document.getElementById("pa-day").value;
+    try {
+      const data = await apiFetch("/pupil-cards/attendance" + (day ? "?day=" + encodeURIComponent(day) : ""));
+      window.__pupilAttendance = data;
+      if (!day) document.getElementById("pa-day").value = data.date;
+      renderPupilAttendance();
+    } catch (e) {
+      document.getElementById("pa-list").innerHTML = `<p class="empty">Could not load attendance: ${e.message}</p>`;
+    }
+  }
+
+  function renderPupilAttendance() {
+    const data = window.__pupilAttendance;
+    if (!data) return;
+    const status = document.getElementById("pa-status").value;
+    const filter = document.getElementById("pa-filter").value.trim().toLowerCase();
+    document.getElementById("pa-summary").innerHTML =
+      `<strong>${data.arrived}</strong> of ${data.total} arrived · <strong>${data.left}</strong> left · ` +
+      `<strong style="color:var(--danger);">${data.not_arrived}</strong> not arrived`;
+    const rows = data.rows.filter((r) =>
+      (status === "all" || r.status === status) &&
+      (!filter || r.name.toLowerCase().includes(filter) || (r.grade || "").toLowerCase().includes(filter)));
+    if (!rows.length) { document.getElementById("pa-list").innerHTML = '<p class="empty">No pupils match.</p>'; return; }
+    const cell = (time, by) => time ? `${time}<span style="color:var(--text-faint); font-size:11.5px; display:block;">${by ? "by " + by : ""}</span>` : '<span style="color:var(--text-faint);">—</span>';
+    document.getElementById("pa-list").innerHTML =
+      `<div class="day-table"><div class="day-table-header"><span>Pupil</span><span>Arrived</span><span>Left</span></div>` +
+      rows.map((r) => `
+        <div class="day-table-row">
+          <span>${r.name}${r.grade ? " · " + r.grade : ""}${r.status === "not_arrived" ? '<span class="fees-badge" style="margin-left:6px;">Not arrived</span>' : ""}</span>
+          <span>${cell(r.arrived_time, r.arrived_by)}</span>
+          <span>${cell(r.left_time, r.left_by)}</span>
+        </div>`).join("") + "</div>";
+  }
+
+  function downloadPupilAttendanceCsv() {
+    const data = window.__pupilAttendance;
+    if (!data) return;
+    const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = ["Pupil,Class,Status,Arrived,Arrived scanned by,Left,Left scanned by"].concat(
+      data.rows.map((r) => [r.name, r.grade, r.status.replace("_", " "), r.arrived_time, r.arrived_by, r.left_time, r.left_by].map(q).join(",")));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+    a.download = `pupil-attendance-${data.date}.csv`;
+    a.click();
   }
 
   async function loadPupilCards() {

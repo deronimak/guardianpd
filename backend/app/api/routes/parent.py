@@ -168,6 +168,9 @@ def student_attendance_history(
                 "type": event.type,
                 "timestamp": event.timestamp.isoformat(),
                 "guardian_name": guardians[event.guardian_id].name if event.guardian_id in guardians else None,
+                # Pupil-card scans have no guardian: the app words these as
+                # "arrived"/"left" instead of "dropped off"/"picked up".
+                "by_pupil_card": event.guardian_id is None,
                 "flagged": event.flagged,
             }
             for event in events

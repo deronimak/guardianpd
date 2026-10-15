@@ -5,6 +5,7 @@ card is printed, so switching a school to pupil mode needs no bulk
 migration and enrolling a pupil needs no extra step.
 """
 
+import datetime as dt
 import io
 import uuid
 from datetime import datetime, timezone
@@ -20,7 +21,8 @@ from app.core.qr_pdf import generate_pupil_cards_pdf
 from app.core.security import generate_pupil_token
 from app.models.platform import School
 from app.api.routes.guardians import _activation_email, enroll_guardian
-from app.models.tenant import Guardian, GuardianStudentLink, Student, StudentCredential
+from app.api.routes.pupil_scan import _school_tz
+from app.models.tenant import AttendanceEvent, Guardian, GuardianStudentLink, StaffUser, Student, StudentCredential
 from app.schemas.guardian import ChildCreate, GuardianCreateRequest
 
 _MAX_PHOTO_UPLOAD_BYTES = 8 * 1024 * 1024  # a raw phone photo; stored size is far smaller (see below).
@@ -81,6 +83,81 @@ def list_pupil_cards(
             }
         )
     return rows
+
+
+@router.get("/attendance")
+def pupil_attendance(
+    day: dt.date | None = None,
+    school: School = Depends(get_school),
+    tenant_db: Session = Depends(get_tenant_db),
+) -> dict:
+    """One school day of pupil attendance (the school's own local day; today
+    by default): every pupil with when they arrived and when they left, who
+    scanned them, and who hasn't arrived yet.
+    """
+    _require_pupil_mode(school)
+    tz = _school_tz(school)
+    the_day = day or dt.datetime.now(tz).date()
+    start = dt.datetime.combine(the_day, dt.time.min, tzinfo=tz)
+    end = dt.datetime.combine(the_day + dt.timedelta(days=1), dt.time.min, tzinfo=tz)
+
+    events = (
+        tenant_db.query(AttendanceEvent)
+        .filter(
+            AttendanceEvent.flagged.is_(False),
+            AttendanceEvent.timestamp >= start.astimezone(dt.timezone.utc),
+            AttendanceEvent.timestamp < end.astimezone(dt.timezone.utc),
+        )
+        .order_by(AttendanceEvent.timestamp)
+        .all()
+    )
+    staff = {
+        sid: name
+        for sid, name in tenant_db.query(StaffUser.id, StaffUser.name)
+        .filter(StaffUser.id.in_({e.scanned_by_staff_id for e in events} or {uuid.uuid4()}))
+        .all()
+    }
+
+    def stamp(event: AttendanceEvent | None) -> tuple[str | None, str | None, str | None]:
+        if event is None:
+            return None, None, None
+        local = event.timestamp.astimezone(tz)
+        return event.timestamp.isoformat(), local.strftime("%I:%M %p").lstrip("0"), staff.get(event.scanned_by_staff_id)
+
+    arrived: dict = {}
+    left: dict = {}
+    for event in events:
+        if event.type == "drop_off":
+            arrived.setdefault(event.student_id, event)
+        else:
+            left[event.student_id] = event
+
+    rows = []
+    for student in tenant_db.query(Student).order_by(Student.grade, Student.name).all():
+        a_iso, a_time, a_by = stamp(arrived.get(student.id))
+        l_iso, l_time, l_by = stamp(left.get(student.id))
+        rows.append(
+            {
+                "student_id": student.id,
+                "name": student.name,
+                "grade": student.grade,
+                "status": "left" if l_iso else ("present" if a_iso else "not_arrived"),
+                "arrived_at": a_iso,
+                "arrived_time": a_time,
+                "arrived_by": a_by,
+                "left_at": l_iso,
+                "left_time": l_time,
+                "left_by": l_by,
+            }
+        )
+    return {
+        "date": the_day.isoformat(),
+        "total": len(rows),
+        "arrived": sum(r["status"] != "not_arrived" for r in rows),
+        "left": sum(r["status"] == "left" for r in rows),
+        "not_arrived": sum(r["status"] == "not_arrived" for r in rows),
+        "rows": rows,
+    }
 
 
 @router.get("/bulk.pdf")

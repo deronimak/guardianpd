@@ -129,10 +129,18 @@ def run_dropoff_check(school: School, tenant_db: Session, today: dt.date) -> int
             student,
             "no_dropoff",
             today,
-            subject=f"{student.name} hasn't been checked in today",
+            subject=(
+                f"{student.name} hasn't arrived at school today"
+                if school.credential_mode == "pupil"
+                else f"{student.name} hasn't been checked in today"
+            ),
             body=(
-                f"{student.name} has not been dropped off at {school.name} today. "
-                "If this is expected (sick day, appointment, etc.), please mark it "
+                (
+                    f"{student.name} has not been scanned in at {school.name} today. "
+                    if school.credential_mode == "pupil"
+                    else f"{student.name} has not been dropped off at {school.name} today. "
+                )
+                + "If this is expected (sick day, appointment, etc.), please mark it "
                 "as a planned absence, or contact the school. If this is unexpected, "
                 "please contact the school right away."
             ),
@@ -170,10 +178,18 @@ def run_pickup_check(school: School, tenant_db: Session, today: dt.date) -> int:
             student,
             "no_pickup",
             today,
-            subject=f"{student.name} has not been picked up yet",
+            subject=(
+                f"{student.name} has not left school yet"
+                if school.credential_mode == "pupil"
+                else f"{student.name} has not been picked up yet"
+            ),
             body=(
-                f"{student.name} was dropped off at {school.name} today but has not "
-                "been picked up yet. Please contact the school if you need help."
+                (
+                    f"{student.name} arrived at {school.name} today but has not been scanned out yet. "
+                    if school.credential_mode == "pupil"
+                    else f"{student.name} was dropped off at {school.name} today but has not been picked up yet. "
+                )
+                + "Please contact the school if you need help."
             ),
         )
         if sent:

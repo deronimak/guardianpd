@@ -57,7 +57,11 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
     }
   }
 
-  String _formatEventType(String type) => type == 'drop_off' ? 'Dropped off' : 'Picked up';
+  // Events recorded from the pupil's own ID card are "arrived"/"left"; guardian
+  // scans stay "dropped off"/"picked up".
+  String _formatEventType(String type, {bool byPupilCard = false}) => byPupilCard
+      ? (type == 'drop_off' ? 'Arrived at school' : 'Left school')
+      : (type == 'drop_off' ? 'Dropped off' : 'Picked up');
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +133,7 @@ class _StudentDetailScreenState extends State<StudentDetailScreen> {
                         event['type'] == 'drop_off' ? Icons.login : Icons.logout,
                         color: flagged ? Colors.red : null,
                       ),
-                      title: Text(_formatEventType(event['type'] as String)),
+                      title: Text(_formatEventType(event['type'] as String, byPupilCard: event['by_pupil_card'] == true)),
                       subtitle: Text(
                         '${event['timestamp']}'
                         '${event['guardian_name'] != null ? ' — by ${event['guardian_name']}' : ''}'
