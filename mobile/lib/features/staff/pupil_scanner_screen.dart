@@ -68,8 +68,6 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   _ScanFeedback? _feedback;
   // Set between scanning a card and the user choosing arrived/leaving.
   _PendingScan? _pending;
-  Timer? _countdownTimer;
-  int _countdown = 0;
   Timer? _clearTimer;
   Timer? _syncTimer;
   bool _syncing = false;
@@ -108,7 +106,6 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   @override
   void dispose() {
     _clearTimer?.cancel();
-    _countdownTimer?.cancel();
     _syncTimer?.cancel();
     _manualTokenController.dispose();
     super.dispose();
@@ -322,33 +319,16 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
 
   void _prompt(_PendingScan pending) {
     if (!mounted) return;
-    _countdownTimer?.cancel();
     _clearTimer?.cancel();
+    // Always waits for a tap (arrived / leaving / cancel): nothing is recorded
+    // on a timer, in staff mode or at a gate station.
     setState(() {
       _pending = pending;
       _feedback = null;
-      _countdown = 6;
     });
-    // A gate station has no staff member tapping: after a few seconds the
-    // suggested option is recorded unless someone taps the other one.
-    if (_station) {
-      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!mounted || _pending == null) {
-          timer.cancel();
-          return;
-        }
-        if (_countdown <= 1) {
-          timer.cancel();
-          _choose(_pending!.suggested);
-        } else {
-          setState(() => _countdown--);
-        }
-      });
-    }
   }
 
   void _cancelPending() {
-    _countdownTimer?.cancel();
     final pending = _pending;
     if (pending != null) _recentTokens.remove(pending.token);
     setState(() => _pending = null);
@@ -357,7 +337,6 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   Future<void> _choose(String type) async {
     final pending = _pending;
     if (pending == null) return;
-    _countdownTimer?.cancel();
     setState(() => _pending = null);
 
     if (pending.offline) {
@@ -591,7 +570,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
 
   Widget _choiceButton(_PendingScan p, String type, IconData icon, Color color) {
     final suggested = p.suggested == type;
-    final label = _typeLabel(type) + (suggested && _station ? '  ($_countdown)' : '');
+    final label = _typeLabel(type);
     final style = ButtonStyle(
       minimumSize: const WidgetStatePropertyAll(Size.fromHeight(64)),
       textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
