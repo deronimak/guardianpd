@@ -2,10 +2,11 @@
 phone for push) — an opt-in, per-school feature (School.sms_enabled) because
 every message costs money.
 
-Provider: Termii (https://developers.termii.com) — POST {base}/api/sms/send
-with a JSON body carrying the api_key. If SMS_API_KEY isn't configured the
-message is logged instead of sent, same fallback pattern as email/push, so
-the scan flow works end-to-end in local dev.
+Provider: Brevo's transactional SMS API, using the same BREVO_API_KEY as
+email (app/core/email.py). The Brevo account needs SMS credits and a sender
+name that Brevo/the Nigerian networks accept (SMS_SENDER_ID, up to 11 letters
+or digits). If BREVO_API_KEY isn't configured the message is logged instead of
+sent, so the scan flow works end-to-end in local dev.
 """
 
 import logging
@@ -17,12 +18,14 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_BREVO_SMS_URL = "https://api.brevo.com/v3/transactionalSMS/sms"
+
 
 def normalize_phone(raw: str | None) -> str | None:
-    """Nigerian-friendly normalization to Termii's "2348012345678" format
-    (international, no plus). Accepts 0801..., +234801..., 234801..., or a
-    bare 10-digit 801... number; any other "+"-prefixed international
-    number is passed through. Returns None for anything unusable.
+    """Nigerian-friendly normalization to "2348012345678" (international, no
+    plus). Accepts 0801..., +234801..., 234801..., or a bare 10-digit 801...
+    number; any other "+"-prefixed international number is passed through.
+    Returns None for anything unusable.
     """
     if not raw:
         return None
@@ -40,32 +43,54 @@ def normalize_phone(raw: str | None) -> str | None:
     return None
 
 
-def send_sms(raw_number: str, message: str) -> bool:
-    """Returns True if a send was attempted (or logged in dev), False if the
-    number was unusable. Raises on a provider failure so the caller can log
-    it without affecting the scan itself.
+def sender_name() -> str:
+    """Brevo alphanumeric senders: letters and digits only, max 11."""
+    return re.sub(r"[^A-Za-z0-9]", "", settings.sms_sender_id)[:11] or "GuardianPD"
+
+
+def sms_configured() -> bool:
+    return bool(settings.brevo_api_key)
+
+
+def send_sms_detailed(raw_number: str, message: str) -> dict:
+    """Sends (or, in dev, logs) one SMS and reports what happened. Raises on a
+    provider failure so callers can log it without affecting the scan itself.
     """
     number = normalize_phone(raw_number)
     if number is None:
         logger.info("SMS skipped: unusable phone number %r", raw_number)
-        return False
+        return {"ok": False, "sent": False, "detail": "That phone number isn't usable"}
 
-    if not settings.sms_api_key:
+    if not sms_configured():
         logger.info("SMS (dev, not sent) to=%s text=%r", number, message)
-        return True
+        return {"ok": True, "sent": False, "number": number, "detail": "Not sent: BREVO_API_KEY is not set (logged only)"}
 
     response = httpx.post(
-        f"{settings.sms_base_url.rstrip('/')}/api/sms/send",
+        _BREVO_SMS_URL,
+        headers={"accept": "application/json", "content-type": "application/json", "api-key": settings.brevo_api_key},
         json={
-            "api_key": settings.sms_api_key,
-            "to": number,
-            "from": settings.sms_sender_id,
-            "sms": message,
-            "channel": settings.sms_channel,
-            "type": "plain",
+            "sender": sender_name(),
+            "recipient": number,
+            "content": message,
+            "type": "transactional",
+            # Names with accents etc. need Unicode encoding or they arrive garbled.
+            "unicodeEnabled": any(ord(ch) > 127 for ch in message),
         },
         timeout=10,
     )
-    if response.status_code != 200:
-        raise RuntimeError(f"SMS send failed ({response.status_code}): {response.text[:200]}")
-    return True
+    if response.status_code not in (200, 201, 202):
+        raise RuntimeError(f"Brevo SMS failed ({response.status_code}): {response.text[:300]}")
+    data = response.json() if response.content else {}
+    return {
+        "ok": True,
+        "sent": True,
+        "number": number,
+        "message_id": data.get("messageId") or data.get("reference"),
+        "remaining_credits": data.get("remainingCredits"),
+        "detail": "Sent",
+    }
+
+
+def send_sms(raw_number: str, message: str) -> bool:
+    """True if a send was attempted (or logged in dev), False if the number was unusable."""
+    return bool(send_sms_detailed(raw_number, message)["ok"])

@@ -18,6 +18,7 @@ from app.api.routes import (
     parent,
     parent_auth,
     platform_auth,
+    platform_sms,
     pre_enrollment,
     pupil_cards,
     pupil_scan,
@@ -61,6 +62,7 @@ app.include_router(staff_accounts.router)
 app.include_router(absences.router)
 app.include_router(attendance.router)
 app.include_router(pupil_scan.router)
+app.include_router(platform_sms.router)
 app.include_router(pupil_cards.router)
 app.include_router(welfare.router)
 app.include_router(pre_enrollment.router)

@@ -8,11 +8,16 @@ import { useAuth } from "../../context/AuthContext";
 import { useChangePassword } from "../../api/auth";
 import { useToast } from "../../context/ToastContext";
 import { ApiError } from "../../lib/api";
+import { useSendTestSms, useSmsStatus } from "../../api/sms";
 
 export function SettingsPage() {
   const { role, logout } = useAuth();
   const { showToast } = useToast();
   const changePassword = useChangePassword();
+  const smsStatus = useSmsStatus();
+  const sendTestSms = useSendTestSms();
+  const [testNumber, setTestNumber] = useState("");
+  const [smsMessage, setSmsMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -76,6 +81,51 @@ export function SettingsPage() {
           <div className="flex justify-end border-t border-gray-100 px-5 py-4">
             <Button onClick={handleSubmit} loading={changePassword.isPending}>
               Update password
+            </Button>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="SMS alerts"
+            description="Texts parents who don't use the app. Send a test message to confirm SMS works before switching it on for a school."
+          />
+          <CardBody className="space-y-4">
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <span>Brevo SMS key</span>
+              {smsStatus.data ? (
+                <Badge tone={smsStatus.data.configured ? "brand" : "gray"}>
+                  {smsStatus.data.configured ? `Configured (sender: ${smsStatus.data.sender})` : "Not configured"}
+                </Badge>
+              ) : null}
+            </div>
+            <div>
+              <Label>Send a test SMS to</Label>
+              <Input placeholder="08012345678" value={testNumber} onChange={(e) => setTestNumber(e.target.value)} />
+            </div>
+            {smsMessage && (
+              <p className={`text-xs font-medium ${smsMessage.ok ? "text-gray-700" : "text-danger-600"}`}>{smsMessage.text}</p>
+            )}
+          </CardBody>
+          <div className="flex justify-end border-t border-gray-100 px-5 py-4">
+            <Button
+              loading={sendTestSms.isPending}
+              disabled={!testNumber.trim()}
+              onClick={() => {
+                setSmsMessage(null);
+                sendTestSms.mutate(testNumber.trim(), {
+                  onSuccess: (r) =>
+                    setSmsMessage({
+                      ok: true,
+                      text: r.sent
+                        ? `Sent to ${r.number}.${r.remaining_credits != null ? ` Credits left: ${r.remaining_credits}.` : ""}`
+                        : r.detail,
+                    }),
+                  onError: (err) => setSmsMessage({ ok: false, text: err instanceof ApiError ? err.message : "Something went wrong." }),
+                });
+              }}
+            >
+              Send test SMS
             </Button>
           </div>
         </Card>

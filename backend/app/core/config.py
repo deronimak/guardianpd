@@ -45,16 +45,12 @@ class Settings(BaseSettings):
     # SMTP above. See app/core/push.py.
     firebase_credentials_json: str = ""
 
-    # SMS alerts for parents without the app (Termii by default — a
-    # Nigerian SMS provider). Needs your own Termii account + an approved
-    # sender ID; blank by default so sends are logged instead, same fallback
-    # as email/push above. SMS_BASE_URL is the host shown in your Termii
-    # dashboard. SMS_CHANNEL: "generic" or "dnd" (dnd reaches numbers on Do
-    # Not Disturb but needs approval from Termii). See app/core/sms.py.
-    sms_api_key: str = ""
+    # SMS alerts for parents without the app go through Brevo's transactional
+    # SMS API using the same BREVO_API_KEY as email above (see app/core/sms.py).
+    # Needs SMS credits on the Brevo account and a sender name Brevo allows for
+    # Nigeria (up to 11 letters/digits). Until BREVO_API_KEY is set, SMS is
+    # logged instead of sent, same fallback as email/push.
     sms_sender_id: str = "GuardianPD"
-    sms_base_url: str = "https://api.ng.termii.com"
-    sms_channel: str = "generic"
 
     # Paystack billing (ARCHITECTURE.md §4). Requires your own Paystack
     # account/API key — checkout-session creation returns a clear 501 until
