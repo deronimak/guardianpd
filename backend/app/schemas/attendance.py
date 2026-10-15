@@ -19,6 +19,10 @@ class ScanResponse(BaseModel):
 
 class PupilScanItem(BaseModel):
     token: str
+    # "drop_off" = arrived at school, "pick_up" = left school. The scanning
+    # staff member (or pupil, at a gate station) chooses it on the device;
+    # when omitted the server works it out from the child's day so far.
+    type: Literal["drop_off", "pick_up"] | None = None
     # When the scan physically happened on the device. Omitted for a live
     # online scan (server uses "now"); set for scans captured offline and
     # synced later, so attendance and parent notifications carry the real
@@ -37,6 +41,22 @@ class PupilScanResult(BaseModel):
     student_name: str | None = None
     grade: str | None = None
     scanned_at: datetime | None = None
+
+
+class PupilLookupRequest(BaseModel):
+    token: str
+
+
+class PupilLookupResult(BaseModel):
+    student_id: uuid.UUID
+    student_name: str
+    grade: str | None = None
+    has_photo: bool = False
+    # What the child's day so far suggests (arrival if nothing yet today,
+    # otherwise the opposite of the last scan) — only a default for the buttons.
+    suggested_type: str
+    last_type: str | None = None
+    last_time: str | None = None
 
 
 class PupilScanBatchRequest(BaseModel):

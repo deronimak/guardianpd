@@ -315,12 +315,29 @@ class ApiClient {
 
   /// Pupil-card scan (schools in "pupil" mode). [scannedAt] is only sent for
   /// scans being replayed after being captured offline.
-  Future<Map<String, dynamic>> pupilScan(String qrToken, {DateTime? scannedAt}) async {
+  Future<Map<String, dynamic>> pupilLookup(String qrToken) async {
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/attendance/pupil-lookup'),
+          headers: _headers(authenticated: true),
+          body: jsonEncode({'token': qrToken}),
+        )
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// [type] is the user's choice: 'drop_off' (arrived at school) or 'pick_up'
+  /// (leaving school).
+  Future<Map<String, dynamic>> pupilScan(String qrToken, {String? type, DateTime? scannedAt}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/attendance/pupil-scan'),
       headers: _headers(authenticated: true),
       body: jsonEncode({
         'token': qrToken,
+        if (type != null) 'type': type,
         if (scannedAt != null) 'scanned_at': scannedAt.toUtc().toIso8601String(),
       }),
     ).timeout(const Duration(seconds: 8));

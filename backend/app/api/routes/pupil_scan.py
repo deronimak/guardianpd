@@ -26,6 +26,8 @@ from app.core.security import verify_qr_token
 from app.models.platform import School
 from app.models.tenant import AttendanceEvent, Student, StudentCredential
 from app.schemas.attendance import (
+    PupilLookupRequest,
+    PupilLookupResult,
     PupilRosterEntry,
     PupilScanBatchRequest,
     PupilScanBatchResponse,
@@ -86,6 +88,19 @@ def _next_type(tenant_db: Session, student_id, when: dt.datetime, tz) -> str:
     return "pick_up"
 
 
+def _student_for_token(token: str, school: School, tenant_db: Session) -> Student:
+    """Signature + revocation checks for a pupil card; raises _Rejected."""
+    decoded = verify_qr_token(token)
+    if decoded is None or decoded.get("sid") != str(school.id) or "pid" not in decoded:
+        raise _Rejected("Invalid card")
+
+    credential = tenant_db.query(StudentCredential).filter_by(token=token, revoked_at=None).first()
+    student = tenant_db.get(Student, credential.student_id) if credential is not None else None
+    if student is None:
+        raise _Rejected("This card is unrecognized or has been replaced")
+    return student
+
+
 def _record_pupil_scan(
     item: PupilScanItem,
     school: School,
@@ -103,28 +118,19 @@ def _record_pupil_scan(
     if now - when > MAX_OFFLINE_AGE:
         raise _Rejected("Scan is too old to sync; please record it manually with the school office")
 
-    decoded = verify_qr_token(item.token)
-    if decoded is None or decoded.get("sid") != str(school.id) or "pid" not in decoded:
-        raise _Rejected("Invalid card")
+    student = _student_for_token(item.token, school, tenant_db)
 
-    credential = tenant_db.query(StudentCredential).filter_by(token=item.token, revoked_at=None).first()
-    if credential is None:
-        raise _Rejected("This card is unrecognized or has been replaced")
-
-    student = tenant_db.get(Student, credential.student_id)
-    if student is None:
-        raise _Rejected("This card is unrecognized or has been replaced")
-
-    near = (
-        tenant_db.query(AttendanceEvent)
-        .filter(
-            AttendanceEvent.student_id == student.id,
-            AttendanceEvent.flagged.is_(False),
-            AttendanceEvent.timestamp >= when - DUPLICATE_WINDOW,
-            AttendanceEvent.timestamp <= when + DUPLICATE_WINDOW,
-        )
-        .first()
+    near_query = tenant_db.query(AttendanceEvent).filter(
+        AttendanceEvent.student_id == student.id,
+        AttendanceEvent.flagged.is_(False),
+        AttendanceEvent.timestamp >= when - DUPLICATE_WINDOW,
+        AttendanceEvent.timestamp <= when + DUPLICATE_WINDOW,
     )
+    if item.type is not None:
+        # A deliberate choice only duplicates the SAME choice: tapping
+        # "arrived" by mistake and then "leaving" a moment later is a correction.
+        near_query = near_query.filter(AttendanceEvent.type == item.type)
+    near = near_query.first()
     if near is not None:
         return PupilScanResult(
             status="duplicate",
@@ -139,7 +145,7 @@ def _record_pupil_scan(
         )
 
     tz = _school_tz(school)
-    event_type = _next_type(tenant_db, student.id, when, tz)
+    event_type = item.type or _next_type(tenant_db, student.id, when, tz)
     event = AttendanceEvent(
         student_id=student.id,
         guardian_id=None,
@@ -178,6 +184,47 @@ def _record_pupil_scan(
         grade=student.grade,
         scanned_at=when,
     )
+
+
+@router.post("/pupil-lookup", response_model=PupilLookupResult)
+def pupil_lookup(
+    payload: PupilLookupRequest,
+    school: School = Depends(require_active_subscription),
+    staff: dict = Depends(get_current_staff),
+    tenant_db: Session = Depends(get_tenant_db),
+) -> dict:
+    """Identify a scanned card WITHOUT recording anything, so the gate screen
+    can show the pupil's photo/name/class and let the user choose "arrived at
+    school" or "leaving school" before it is recorded (POST /pupil-scan).
+    """
+    _require_pupil_mode(school)
+    try:
+        student = _student_for_token(payload.token, school, tenant_db)
+    except _Rejected as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    tz = _school_tz(school)
+    now = dt.datetime.now(dt.timezone.utc)
+    day_start = now.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(dt.timezone.utc)
+    last = (
+        tenant_db.query(AttendanceEvent)
+        .filter(
+            AttendanceEvent.student_id == student.id,
+            AttendanceEvent.flagged.is_(False),
+            AttendanceEvent.timestamp >= day_start,
+        )
+        .order_by(AttendanceEvent.timestamp.desc())
+        .first()
+    )
+    return {
+        "student_id": student.id,
+        "student_name": student.name,
+        "grade": student.grade,
+        "has_photo": student.photo is not None,
+        "suggested_type": "pick_up" if last is not None and last.type == "drop_off" else "drop_off",
+        "last_type": last.type if last is not None else None,
+        "last_time": last.timestamp.astimezone(tz).strftime("%I:%M %p").lstrip("0") if last is not None else None,
+    }
 
 
 @router.post("/pupil-scan", response_model=PupilScanResult)

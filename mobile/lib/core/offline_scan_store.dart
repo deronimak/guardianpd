@@ -93,9 +93,30 @@ class OfflineScanStore {
     return _writeChain;
   }
 
-  Future<void> enqueue(String token, DateTime scannedAt) async {
-    queue.add({'token': token, 'scanned_at': scannedAt.toUtc().toIso8601String()});
+  Future<void> enqueue(String token, DateTime scannedAt, {String? type}) async {
+    queue.add({
+      'token': token,
+      'scanned_at': scannedAt.toUtc().toIso8601String(),
+      if (type != null) 'type': type,
+    });
     await _save();
+  }
+
+  /// A default for the arrived/leaving buttons when there is no connection:
+  /// the opposite of this pupil's last saved scan today, else "arrived".
+  String suggestedTypeFor(String pupilId, DateTime now) {
+    String? lastType;
+    DateTime? lastAt;
+    for (final item in queue) {
+      if (pupilIdFromToken(item['token'] as String) != pupilId) continue;
+      final at = DateTime.tryParse(item['scanned_at'] as String)?.toLocal();
+      if (at == null || at.year != now.year || at.month != now.month || at.day != now.day) continue;
+      if (lastAt == null || at.isAfter(lastAt)) {
+        lastAt = at;
+        lastType = item['type'] as String?;
+      }
+    }
+    return lastType == 'drop_off' ? 'pick_up' : 'drop_off';
   }
 
   /// Applies the server's per-item results (same order as [sent]) after a

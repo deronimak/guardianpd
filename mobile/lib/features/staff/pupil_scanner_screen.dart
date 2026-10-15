@@ -20,6 +20,30 @@ class _ScanFeedback {
   const _ScanFeedback(this.outcome, this.title, {this.subtitle, this.note, this.photo});
 }
 
+/// A scanned card waiting for the user to choose what to record.
+class _PendingScan {
+  final String token;
+  final String name;
+  final String? grade;
+  final Uint8List? photo;
+  final String suggested;
+  final String? lastNote;
+  final bool offline;
+  final DateTime when;
+  const _PendingScan({
+    required this.token,
+    required this.name,
+    required this.suggested,
+    required this.offline,
+    required this.when,
+    this.grade,
+    this.photo,
+    this.lastNote,
+  });
+}
+
+String _typeLabel(String type) => type == 'drop_off' ? 'Arrived at school' : 'Leaving school';
+
 /// Scans pupil ID cards. Works for both a staff member scanning with their
 /// own phone and a fixed "gate station" (a phone/tablet left at the gate):
 /// [station] just locks the screen to scanning with big result feedback.
@@ -42,6 +66,10 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
 
   late bool _station = widget.station;
   _ScanFeedback? _feedback;
+  // Set between scanning a card and the user choosing arrived/leaving.
+  _PendingScan? _pending;
+  Timer? _countdownTimer;
+  int _countdown = 0;
   Timer? _clearTimer;
   Timer? _syncTimer;
   bool _syncing = false;
@@ -80,6 +108,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   @override
   void dispose() {
     _clearTimer?.cancel();
+    _countdownTimer?.cancel();
     _syncTimer?.cancel();
     _manualTokenController.dispose();
     super.dispose();
@@ -219,7 +248,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   }
 
   Future<void> _handleDetection(BarcodeCapture capture) async {
-    if (!_ready || capture.barcodes.isEmpty) return;
+    if (!_ready || _pending != null || capture.barcodes.isEmpty) return;
     final raw = capture.barcodes.first.rawValue;
     if (raw == null) return;
     await _processToken(raw);
@@ -240,30 +269,29 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
     }
 
     try {
-      final result = await widget.apiClient.pupilScan(token);
+      final info = await widget.apiClient.pupilLookup(token);
       _sessionExpired = false;
-      final name = result['student_name'] as String? ?? 'Pupil';
-      final grade = result['grade'] as String?;
       if (mounted) setState(() => _online = true);
-      final photo = await _photoFor(result['student_id'] as String?, result['has_photo'] == true);
-      if (result['status'] == 'duplicate') {
-        _show(_ScanFeedback(_Outcome.duplicate, name, subtitle: grade, note: 'Already scanned a moment ago', photo: photo));
-      } else {
-        final arriving = result['type'] == 'drop_off';
-        _show(_ScanFeedback(
-          _Outcome.recorded,
-          name,
-          subtitle: grade,
-          note: arriving ? 'Arrived at school' : 'Leaving school',
-          photo: photo,
-        ));
-      }
-      unawaited(_syncQueue());
+      final photo = await _photoFor(info['student_id'] as String?, info['has_photo'] == true);
+      final lastType = info['last_type'] as String?;
+      final lastTime = info['last_time'] as String?;
+      _prompt(_PendingScan(
+        token: token,
+        name: info['student_name'] as String? ?? 'Pupil',
+        grade: info['grade'] as String?,
+        photo: photo,
+        suggested: info['suggested_type'] as String? ?? 'drop_off',
+        lastNote: lastType == null || lastTime == null
+            ? null
+            : (lastType == 'drop_off' ? 'Arrived at $lastTime today' : 'Left at $lastTime today'),
+        offline: false,
+        when: now,
+      ));
     } on ApiException catch (e) {
       if (e.statusCode == 401) {
-        // Login expired: don't lose the scan. Save it, and say what to do.
+        // Login expired: don't lose the scan. Let them record it and save it.
         _sessionExpired = true;
-        await _saveOffline(token, now, reason: 'Sign in again to upload saved scans');
+        await _promptOffline(token, now);
       } else if (e.statusCode == 402 || e.statusCode == 403) {
         _show(_ScanFeedback(_Outcome.blocked, 'Scanning unavailable', subtitle: _detail(e)));
       } else {
@@ -272,22 +300,107 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
     } catch (e) {
       if (_isNetworkError(e)) {
         if (mounted) setState(() => _online = false);
-        await _saveOffline(token, now);
+        await _promptOffline(token, now);
       }
     }
   }
 
-  Future<void> _saveOffline(String token, DateTime when, {String? reason}) async {
-    await _store.enqueue(token, when);
-    final name = _store.nameForToken(token);
-    final pupilId = OfflineScanStore.pupilIdFromToken(token);
-    final photo = pupilId == null ? null : await _store.readPhoto(pupilId);
+  /// No connection: identify the pupil from the cached list instead.
+  Future<void> _promptOffline(String token, DateTime now) async {
+    final pupilId = OfflineScanStore.pupilIdFromToken(token) ?? '';
+    final photo = await _store.readPhoto(pupilId);
+    _prompt(_PendingScan(
+      token: token,
+      name: _store.nameForToken(token) ?? 'Pupil card',
+      grade: _store.roster[pupilId]?['grade'] as String?,
+      photo: photo,
+      suggested: _store.suggestedTypeFor(pupilId, now),
+      offline: true,
+      when: now,
+    ));
+  }
+
+  void _prompt(_PendingScan pending) {
+    if (!mounted) return;
+    _countdownTimer?.cancel();
+    _clearTimer?.cancel();
+    setState(() {
+      _pending = pending;
+      _feedback = null;
+      _countdown = 6;
+    });
+    // A gate station has no staff member tapping: after a few seconds the
+    // suggested option is recorded unless someone taps the other one.
+    if (_station) {
+      _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted || _pending == null) {
+          timer.cancel();
+          return;
+        }
+        if (_countdown <= 1) {
+          timer.cancel();
+          _choose(_pending!.suggested);
+        } else {
+          setState(() => _countdown--);
+        }
+      });
+    }
+  }
+
+  void _cancelPending() {
+    _countdownTimer?.cancel();
+    final pending = _pending;
+    if (pending != null) _recentTokens.remove(pending.token);
+    setState(() => _pending = null);
+  }
+
+  Future<void> _choose(String type) async {
+    final pending = _pending;
+    if (pending == null) return;
+    _countdownTimer?.cancel();
+    setState(() => _pending = null);
+
+    if (pending.offline) {
+      await _saveOffline(pending, type);
+      return;
+    }
+    try {
+      final result = await widget.apiClient.pupilScan(pending.token, type: type);
+      _sessionExpired = false;
+      if (mounted) setState(() => _online = true);
+      if (result['status'] == 'duplicate') {
+        _show(_ScanFeedback(_Outcome.duplicate, pending.name,
+            subtitle: pending.grade, note: 'Already recorded a moment ago', photo: pending.photo));
+      } else {
+        _show(_ScanFeedback(_Outcome.recorded, pending.name,
+            subtitle: pending.grade, note: _typeLabel(type), photo: pending.photo));
+      }
+      unawaited(_syncQueue());
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        _sessionExpired = true;
+        await _saveOffline(pending, type, reason: 'Sign in again to upload saved scans');
+      } else if (e.statusCode == 402 || e.statusCode == 403) {
+        _show(_ScanFeedback(_Outcome.blocked, 'Scanning unavailable', subtitle: _detail(e)));
+      } else {
+        _show(_ScanFeedback(_Outcome.rejected, 'Not recorded', subtitle: _detail(e)));
+      }
+    } catch (e) {
+      if (_isNetworkError(e)) {
+        if (mounted) setState(() => _online = false);
+        await _saveOffline(pending, type);
+      }
+    }
+  }
+
+  Future<void> _saveOffline(_PendingScan pending, String type, {String? reason}) async {
+    await _store.enqueue(pending.token, pending.when, type: type);
     _show(_ScanFeedback(
       _Outcome.saved,
-      name ?? 'Card saved',
-      photo: photo,
-      subtitle: _store.roster[pupilId]?['grade'] as String?,
-      note: reason ?? 'No connection: saved on this device and will upload automatically',
+      pending.name,
+      photo: pending.photo,
+      subtitle: pending.grade,
+      note: '${_typeLabel(type)}\n${reason ?? 'No connection: saved on this device and will upload automatically'}',
     ));
   }
 
@@ -426,6 +539,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
                 children: [
                   MobileScanner(onDetect: _handleDetection),
                   if (_feedback != null) Positioned.fill(child: _buildFeedback(_feedback!)),
+                  if (_pending != null) Positioned.fill(child: _buildPending(_pending!)),
                 ],
               ),
             ),
@@ -470,6 +584,90 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
                 child: Text('${_store.rejected.length} need attention'),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _choiceButton(_PendingScan p, String type, IconData icon, Color color) {
+    final suggested = p.suggested == type;
+    final label = _typeLabel(type) + (suggested && _station ? '  ($_countdown)' : '');
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size.fromHeight(64)),
+      textStyle: const WidgetStatePropertyAll(TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+    );
+    return suggested
+        ? FilledButton.icon(
+            style: style.copyWith(backgroundColor: WidgetStatePropertyAll(color)),
+            onPressed: () => _choose(type),
+            icon: Icon(icon),
+            label: Text(label),
+          )
+        : OutlinedButton.icon(
+            // Explicit colours: the app theme would otherwise paint every
+            // button purple, which makes this one unreadable.
+            style: style.copyWith(
+              foregroundColor: WidgetStatePropertyAll(color),
+              backgroundColor: const WidgetStatePropertyAll(Colors.white),
+              side: WidgetStatePropertyAll(BorderSide(color: color, width: 2)),
+            ),
+            onPressed: () => _choose(type),
+            icon: Icon(icon),
+            label: Text(label),
+          );
+  }
+
+  /// Shown right after a card is scanned: who it is, then the two options.
+  Widget _buildPending(_PendingScan p) {
+    return Container(
+      color: Colors.white.withValues(alpha: 0.97),
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: p.photo != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.memory(p.photo!, width: 150, height: 188, fit: BoxFit.cover, gaplessPlayback: true),
+                      )
+                    : const CircleAvatar(radius: 48, child: Icon(Icons.person, size: 56)),
+              ),
+              const SizedBox(height: 14),
+              Text(p.name,
+                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+              if (p.grade != null && p.grade!.isNotEmpty)
+                Text(p.grade!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, color: Colors.black54)),
+              if (p.lastNote != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(p.lastNote!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54)),
+                ),
+              if (p.offline)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('No connection: this will be saved and uploaded automatically',
+                      textAlign: TextAlign.center, style: TextStyle(color: Colors.amber.shade900)),
+                ),
+              const SizedBox(height: 18),
+              _choiceButton(p, 'drop_off', Icons.login, Colors.green.shade700),
+              const SizedBox(height: 12),
+              _choiceButton(p, 'pick_up', Icons.logout, Colors.blue.shade700),
+              const SizedBox(height: 8),
+              TextButton(
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.black87,
+                  minimumSize: const Size.fromHeight(44),
+                ),
+                onPressed: _cancelPending,
+                child: const Text('Not this pupil / cancel'),
+              ),
+            ],
+          ),
         ),
       ),
     );

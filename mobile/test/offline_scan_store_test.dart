@@ -53,4 +53,27 @@ void main() {
     store.photoHashes = {'a': 'h1', 'b': 'old'};
     expect(store.pupilsNeedingPhoto().map((p) => p['id']), ['b']);
   });
+  test('offline suggestion alternates from the last saved scan today, defaulting to arrived', () async {
+    final store = OfflineScanStore.forSchool('unit-test-suggest');
+    await store.load();
+    final now = DateTime.now();
+    final token = _tokenFor({'pid': 'pupil-1'});
+    store.queue = [];
+    expect(store.suggestedTypeFor('pupil-1', now), 'drop_off');
+
+    store.queue = [
+      {'token': token, 'scanned_at': now.subtract(const Duration(minutes: 5)).toUtc().toIso8601String(), 'type': 'drop_off'},
+    ];
+    expect(store.suggestedTypeFor('pupil-1', now), 'pick_up');
+
+    store.queue.add({'token': token, 'scanned_at': now.toUtc().toIso8601String(), 'type': 'pick_up'});
+    expect(store.suggestedTypeFor('pupil-1', now), 'drop_off');
+
+    // Another pupil, or a scan from a different day, doesn't count.
+    expect(store.suggestedTypeFor('pupil-2', now), 'drop_off');
+    store.queue = [
+      {'token': token, 'scanned_at': now.subtract(const Duration(days: 2)).toUtc().toIso8601String(), 'type': 'drop_off'},
+    ];
+    expect(store.suggestedTypeFor('pupil-1', now), 'drop_off');
+  });
 }
