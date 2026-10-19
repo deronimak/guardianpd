@@ -108,6 +108,17 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                         ),
                         onPressed: () => _open(StaffScannerScreen(apiClient: widget.apiClient)),
                       ),
+                    if (!pupilMode) ...[
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.lock_outline),
+                        label: const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text('Gate Station Mode'),
+                        ),
+                        onPressed: () => _open(StaffScannerScreen(apiClient: widget.apiClient, station: true)),
+                      ),
+                    ],
                   ],
                 ),
               ),

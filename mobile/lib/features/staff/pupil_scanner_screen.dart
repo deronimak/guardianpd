@@ -7,6 +7,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/api_client.dart';
 import '../../core/offline_scan_store.dart';
+import 'station_lock.dart';
 
 enum _Outcome { recorded, saved, duplicate, rejected, blocked }
 
@@ -173,56 +174,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   /// Returns false if they cancel.
   Future<bool> _ensurePin() async {
     if (_stationPin != null) return true;
-    final first = TextEditingController();
-    final second = TextEditingController();
-    String? error;
-    final pin = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Set a station PIN'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('You will need this PIN to leave station mode. Do not share it with pupils.'),
-              TextField(
-                controller: first,
-                keyboardType: TextInputType.number,
-                obscureText: true,
-                maxLength: 4,
-                decoration: const InputDecoration(labelText: '4-digit PIN', counterText: ''),
-              ),
-              TextField(
-                controller: second,
-                keyboardType: TextInputType.number,
-                obscureText: true,
-                maxLength: 4,
-                decoration: const InputDecoration(labelText: 'Repeat PIN', counterText: ''),
-              ),
-              if (error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: const TextStyle(color: Colors.red))),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            TextButton(
-              onPressed: () {
-                if (!RegExp(r'^\d{4}$').hasMatch(first.text)) {
-                  setLocal(() => error = 'Enter exactly 4 digits');
-                } else if (first.text != second.text) {
-                  setLocal(() => error = 'The PINs do not match');
-                } else {
-                  Navigator.pop(ctx, first.text);
-                }
-              },
-              child: const Text('Start'),
-            ),
-          ],
-        ),
-      ),
-    );
-    first.dispose();
-    second.dispose();
+    final pin = await promptSetStationPin(context);
     if (pin == null) return false;
     _stationPin = pin;
     return true;
@@ -399,46 +351,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   }
 
   Future<void> _exitStation() async {
-    final pinController = TextEditingController();
-    bool wrong = false;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Leave station mode?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter the station PIN. Only the member of staff supervising the gate should leave this screen.'),
-              TextField(
-                controller: pinController,
-                keyboardType: TextInputType.number,
-                obscureText: true,
-                maxLength: 4,
-                autofocus: true,
-                decoration: InputDecoration(labelText: 'PIN', counterText: '', errorText: wrong ? 'Wrong PIN' : null),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Stay')),
-            TextButton(
-              onPressed: () {
-                if (pinController.text == _stationPin) {
-                  Navigator.pop(ctx, true);
-                } else {
-                  pinController.clear();
-                  setLocal(() => wrong = true);
-                }
-              },
-              child: const Text('Leave'),
-            ),
-          ],
-        ),
-      ),
-    );
-    pinController.dispose();
-    if (ok == true && mounted) {
+    if (await confirmLeaveStation(context, _stationPin) && mounted) {
       setState(() => _station = false);
       Navigator.of(context).pop();
     }
@@ -533,7 +446,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
               child: Stack(
                 children: [
                   MobileScanner(controller: _camera, onDetect: _handleDetection),
-                  if (_station && _pending == null && _feedback == null) Positioned.fill(child: _buildFrameGuide()),
+                  if (_station && _pending == null && _feedback == null) const Positioned.fill(child: StationFrameGuide()),
                   if (_feedback != null) Positioned.fill(child: _buildFeedback(_feedback!)),
                   if (_pending != null) Positioned.fill(child: _buildPending(_pending!)),
                 ],
@@ -579,37 +492,6 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
                 onPressed: _showRejected,
                 child: Text('${_store.rejected.length} need attention'),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// A frame drawn over the camera view at a gate station, so the pupil knows
-  /// where to hold their card.
-  Widget _buildFrameGuide() {
-    return IgnorePointer(
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 4),
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(999)),
-              child: const Text(
-                'Hold your card inside the box',
-                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
-              ),
-            ),
           ],
         ),
       ),

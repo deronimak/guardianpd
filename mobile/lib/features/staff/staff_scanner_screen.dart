@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/api_client.dart';
+import 'station_lock.dart';
 
 class StaffScannerScreen extends StatefulWidget {
   final ApiClient apiClient;
-  const StaffScannerScreen({super.key, required this.apiClient});
+  // Gate station: locked behind a PIN, front camera, supervised by staff.
+  final bool station;
+  const StaffScannerScreen({super.key, required this.apiClient, this.station = false});
 
   @override
   State<StaffScannerScreen> createState() => _StaffScannerScreenState();
@@ -13,6 +16,38 @@ class StaffScannerScreen extends StatefulWidget {
 
 class _StaffScannerScreenState extends State<StaffScannerScreen> {
   final _manualTokenController = TextEditingController();
+
+  late bool _station = widget.station;
+  String? _stationPin;
+  // The front camera works like a mirror, so people can see where to hold
+  // their card; staff scanning with their own phone use the back camera.
+  late final MobileScannerController _camera =
+      MobileScannerController(facing: widget.station ? CameraFacing.front : CameraFacing.back);
+
+  @override
+  void initState() {
+    super.initState();
+    if (_station) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!await _ensurePin() && mounted) Navigator.of(context).pop();
+      });
+    }
+  }
+
+  Future<bool> _ensurePin() async {
+    if (_stationPin != null) return true;
+    final pin = await promptSetStationPin(context);
+    if (pin == null) return false;
+    _stationPin = pin;
+    return true;
+  }
+
+  Future<void> _exitStation() async {
+    if (await confirmLeaveStation(context, _stationPin) && mounted) {
+      setState(() => _station = false);
+      Navigator.of(context).pop();
+    }
+  }
 
   bool _busy = false;
   String _status = "Point the camera at a guardian's QR code";
@@ -122,29 +157,65 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
 
   @override
   void dispose() {
+    _camera.dispose();
     _manualTokenController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Scan Guardian QR')),
-      body: Column(
-        children: [
-          Expanded(
-            flex: _guardianId == null ? 3 : 1,
-            child: MobileScanner(onDetect: _handleDetection),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            flex: 2,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: _guardianId == null ? _buildIdleControls() : _buildPicker(),
+    return PopScope(
+      canPop: !_station,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _station) _exitStation();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: !_station,
+          title: Text(_station ? 'Gate Station' : 'Scan Guardian QR'),
+          actions: [
+            IconButton(
+              tooltip: 'Switch camera',
+              icon: const Icon(Icons.cameraswitch),
+              onPressed: () => _camera.switchCamera(),
             ),
-          ),
-        ],
+            if (_station)
+              IconButton(tooltip: 'Leave station mode', icon: const Icon(Icons.lock), onPressed: _exitStation)
+            else
+              IconButton(
+                tooltip: 'Station mode',
+                icon: const Icon(Icons.lock_outline),
+                onPressed: () async {
+                  if (await _ensurePin() && mounted) {
+                    setState(() => _station = true);
+                    if (_camera.value.cameraDirection == CameraFacing.back) await _camera.switchCamera();
+                  }
+                },
+              ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              flex: _guardianId == null ? 3 : 1,
+              child: Stack(
+                children: [
+                  MobileScanner(controller: _camera, onDetect: _handleDetection),
+                  if (_station && _guardianId == null)
+                    const Positioned.fill(child: StationFrameGuide(message: 'Hold your QR card inside the box')),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              flex: 2,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: _guardianId == null ? _buildIdleControls() : _buildPicker(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -153,7 +224,8 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(_status, textAlign: TextAlign.center),
+        Text(_status, textAlign: TextAlign.center, style: _station ? const TextStyle(fontSize: 18) : null),
+        if (!_station) ...[
         const SizedBox(height: 16),
         const Text('Camera not working? Enter the code manually:', style: TextStyle(color: Colors.black54)),
         const SizedBox(height: 8),
@@ -170,6 +242,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
               : () => _lookup(_manualTokenController.text.trim()),
           child: const Text('Look up'),
         ),
+        ],
       ],
     );
   }
@@ -183,7 +256,12 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
             Flexible(
               child: Text(_guardianName!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             ),
-            if (_feesOutstanding) ...[
+            if (_feesOutstanding && _station)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Icon(Icons.flag, size: 18, color: Colors.amber.shade800),
+              ),
+            if (_feesOutstanding && !_station) ...[
               const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
