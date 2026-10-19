@@ -397,6 +397,44 @@ def resend_activation(
     return {"status": "sent"}
 
 
+@router.get("/scan-roster", response_model=list[GuardianLookupOut])
+def guardian_scan_roster(
+    school: School = Depends(require_active_subscription),
+    tenant_db: Session = Depends(get_tenant_db),
+) -> list[dict]:
+    """Every guardian with an active QR card and the children they may drop
+    off/pick up (same shape as /lookup), cached on the scanning phone so it can
+    still show who a card belongs to when there is no signal. Names only (no
+    phone/email) and no tokens: the card's QR carries the guardian id, the phone
+    looks it up here, and the server still validates the real signature, the
+    revocation and the child authorization when the saved scan is uploaded.
+    """
+    active = {
+        gid
+        for (gid,) in tenant_db.query(QRCredential.guardian_id).filter(QRCredential.revoked_at.is_(None)).all()
+    }
+    children: dict = {}
+    for guardian_id, student in (
+        tenant_db.query(GuardianStudentLink.guardian_id, Student)
+        .join(Student, Student.id == GuardianStudentLink.student_id)
+        .filter(GuardianStudentLink.is_authorized_pickup)
+        .order_by(Student.name)
+        .all()
+    ):
+        children.setdefault(guardian_id, []).append(student)
+
+    return [
+        {
+            "guardian_id": g.id,
+            "guardian_name": g.name,
+            "fees_outstanding": bool(g.fees_outstanding),
+            "students": [{"id": s.id, "name": s.name, "grade": s.grade} for s in children.get(g.id, [])],
+        }
+        for g in tenant_db.query(Guardian).order_by(Guardian.name).all()
+        if g.id in active
+    ]
+
+
 @router.get("/lookup", response_model=GuardianLookupOut)
 def lookup_guardian_by_qr(
     token: str,

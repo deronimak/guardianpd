@@ -1,4 +1,6 @@
+import datetime as dt
 import logging
+import zoneinfo
 
 import firebase_admin.exceptions
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,7 +20,13 @@ from app.models.tenant import (
     QRCredential,
     Student,
 )
-from app.schemas.attendance import ScanRequest, ScanResponse
+from app.schemas.attendance import (
+    GuardianScanBatchRequest,
+    GuardianScanBatchResponse,
+    GuardianScanResult,
+    ScanRequest,
+    ScanResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,78 +83,124 @@ def _push_to_guardians(
     tenant_db.commit()
 
 
-@router.post("/scan", response_model=ScanResponse)
-def scan_qr(
-    payload: ScanRequest,
-    school: School = Depends(require_active_subscription),
-    staff: dict = Depends(get_current_staff),
-    tenant_db: Session = Depends(get_tenant_db),
-) -> dict:
-    """The core security-critical flow — ARCHITECTURE.md §5/§6.
+# Two scans of the same guardian/child/direction inside this window are one
+# physical scan (a retried upload), not two events. Only applied to scans that
+# carry their own timestamp (the offline batch), so live scans behave as before.
+_DUPLICATE_WINDOW = dt.timedelta(seconds=90)
+_FUTURE_SKEW = dt.timedelta(minutes=5)
+_MAX_OFFLINE_AGE = dt.timedelta(days=3)
+_LATE_NOTICE_AFTER = dt.timedelta(minutes=3)
 
-    Order matters: subscription gate (dependency) -> signature check ->
-    revocation check (DB) -> per-child authorization check (DB) -> write.
-    scanned_by_staff_id comes from the authenticated staff JWT, never from
-    the request body, since a client-supplied staff_id would be spoofable.
+
+def _local_time_label(school: School, when: dt.datetime) -> str:
+    try:
+        tz = zoneinfo.ZoneInfo(school.timezone)
+    except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        tz = dt.timezone.utc
+    return when.astimezone(tz).strftime("%I:%M %p").lstrip("0")
+
+
+def _record_guardian_scan(
+    token: str,
+    student_id,
+    scan_type: str,
+    school: School,
+    staff_id,
+    tenant_db: Session,
+    when: dt.datetime | None = None,
+) -> dict:
+    """The core security-critical flow — ARCHITECTURE.md §5/§6, shared by the
+    live scan and the offline batch upload.
+
+    Order matters: signature check -> revocation check (DB) -> per-child
+    authorization check (DB) -> write. scanned_by_staff_id comes from the
+    authenticated staff JWT, never from the request body, since a
+    client-supplied staff_id would be spoofable. `when` is the time the scan
+    physically happened (offline uploads); None means "now". Raises
+    HTTPException exactly as the live endpoint always has.
     """
-    decoded = verify_qr_token(payload.token)
+    decoded = verify_qr_token(token)
     if decoded is None or decoded.get("sid") != str(school.id):
         raise HTTPException(status_code=400, detail="Invalid QR code")
 
-    credential = (
-        tenant_db.query(QRCredential)
-        .filter_by(token=payload.token, revoked_at=None)
-        .first()
-    )
+    credential = tenant_db.query(QRCredential).filter_by(token=token, revoked_at=None).first()
     if credential is None:
         raise HTTPException(status_code=400, detail="This QR code is unrecognized or has been revoked")
 
-    student = tenant_db.get(Student, payload.student_id)
+    now = dt.datetime.now(dt.timezone.utc)
+    if when is not None:
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=dt.timezone.utc)
+        if when > now + _FUTURE_SKEW:
+            raise HTTPException(status_code=400, detail="Scan time is in the future; check the phone's clock")
+        when = min(when, now)
+        if now - when > _MAX_OFFLINE_AGE:
+            raise HTTPException(
+                status_code=400, detail="Scan is too old to sync; please record it manually with the school office"
+            )
+
+        near = (
+            tenant_db.query(AttendanceEvent)
+            .filter(
+                AttendanceEvent.student_id == student_id,
+                AttendanceEvent.guardian_id == credential.guardian_id,
+                AttendanceEvent.type == scan_type,
+                AttendanceEvent.flagged.is_(False),
+                AttendanceEvent.timestamp >= when - _DUPLICATE_WINDOW,
+                AttendanceEvent.timestamp <= when + _DUPLICATE_WINDOW,
+            )
+            .first()
+        )
+        if near is not None:
+            return {"event_id": near.id, "status": "duplicate", "flagged": False}
+
+    late = when is not None and now - when > _LATE_NOTICE_AFTER
+    late_note = f" at {_local_time_label(school, when)} (recorded earlier, delivered late)" if late else ""
+
+    student = tenant_db.get(Student, student_id)
     student_name = student.name if student is not None else "A child"
 
     link = (
         tenant_db.query(GuardianStudentLink)
-        .filter_by(
-            guardian_id=credential.guardian_id,
-            student_id=payload.student_id,
-            is_authorized_pickup=True,
-        )
+        .filter_by(guardian_id=credential.guardian_id, student_id=student_id, is_authorized_pickup=True)
         .first()
     )
     if link is None:
         flagged_event = AttendanceEvent(
-            student_id=payload.student_id,
+            student_id=student_id,
             guardian_id=credential.guardian_id,
-            type=payload.type,
-            scanned_by_staff_id=staff["sub"],
+            type=scan_type,
+            scanned_by_staff_id=staff_id,
             flagged=True,
             flag_reason="guardian_not_authorized_for_student",
+            **({"timestamp": when} if when is not None else {}),
         )
         tenant_db.add(flagged_event)
         tenant_db.commit()
 
         # ARCHITECTURE.md §6: unauthorized attempt -> alert real guardians,
         # not the person who scanned (they aren't one of them).
-        real_guardians = _guardians_for_student(tenant_db, payload.student_id)
+        real_guardians = _guardians_for_student(tenant_db, student_id)
         _push_to_guardians(
             tenant_db,
             real_guardians,
             flagged_event.id,
             title=f"Unrecognized attempt for {student_name}",
             body=(
-                f"Someone scanned an unrecognized/unauthorized code for {student_name} at {school.name}. "
+                f"Someone scanned an unrecognized/unauthorized code for {student_name}{late_note} at {school.name}. "
                 "If this wasn't expected, please contact the school right away."
             ),
             school=school,
-            sms_text=f"{school.name}: an unrecognized code was scanned for {student_name}. If unexpected, contact the school.",
+            sms_text=f"{school.name}: an unrecognized code was scanned for {student_name}{late_note}. If unexpected, contact the school.",
         )
         raise HTTPException(status_code=403, detail="This guardian is not authorized for this child")
 
     event = AttendanceEvent(
-        student_id=payload.student_id,
+        student_id=student_id,
         guardian_id=credential.guardian_id,
-        type=payload.type,
-        scanned_by_staff_id=staff["sub"],
+        type=scan_type,
+        scanned_by_staff_id=staff_id,
+        **({"timestamp": when} if when is not None else {}),
     )
     tenant_db.add(event)
     tenant_db.commit()
@@ -156,15 +210,61 @@ def scan_qr(
     # a passive fraud detector.
     scanning_guardian = tenant_db.get(Guardian, credential.guardian_id)
     guardian_name = scanning_guardian.name if scanning_guardian is not None else "A guardian"
-    action_label = _ACTION_LABEL.get(payload.type, payload.type)
-    guardians = _guardians_for_student(tenant_db, payload.student_id)
+    action_label = _ACTION_LABEL.get(scan_type, scan_type)
+    guardians = _guardians_for_student(tenant_db, student_id)
     _push_to_guardians(
         tenant_db,
         guardians,
         event.id,
         title=f"{student_name} {action_label}",
-        body=f"{student_name} was {action_label} by {guardian_name} at {school.name}.",
+        body=f"{student_name} was {action_label} by {guardian_name}{late_note} at {school.name}.",
         school=school,
     )
 
     return {"event_id": event.id, "status": "recorded", "flagged": False}
+
+
+@router.post("/scan", response_model=ScanResponse)
+def scan_qr(
+    payload: ScanRequest,
+    school: School = Depends(require_active_subscription),
+    staff: dict = Depends(get_current_staff),
+    tenant_db: Session = Depends(get_tenant_db),
+) -> dict:
+    return _record_guardian_scan(payload.token, payload.student_id, payload.type, school, staff["sub"], tenant_db)
+
+
+@router.post("/scan/batch", response_model=GuardianScanBatchResponse)
+def scan_qr_batch(
+    payload: GuardianScanBatchRequest,
+    school: School = Depends(require_active_subscription),
+    staff: dict = Depends(get_current_staff),
+    tenant_db: Session = Depends(get_tenant_db),
+) -> GuardianScanBatchResponse:
+    """Upload guardian scans saved on a phone while it had no signal. Each
+    scan is checked exactly like a live one (signature, revocation, the
+    guardian's authorization for that child), using the time it really
+    happened. Results come back in request order, one per scan: "recorded",
+    "duplicate" (already uploaded), "flagged" (guardian not authorized for
+    that child — the real guardians are alerted, as live), or "rejected".
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+
+    def when_of(index: int) -> dt.datetime:
+        when = payload.scans[index].scanned_at or now
+        return when if when.tzinfo else when.replace(tzinfo=dt.timezone.utc)
+
+    results: list[GuardianScanResult | None] = [None] * len(payload.scans)
+    for index in sorted(range(len(payload.scans)), key=when_of):
+        item = payload.scans[index]
+        try:
+            outcome = _record_guardian_scan(
+                item.token, item.student_id, item.type, school, staff["sub"], tenant_db, when=when_of(index)
+            )
+            results[index] = GuardianScanResult(status=outcome["status"], event_id=outcome["event_id"])
+        except HTTPException as exc:
+            tenant_db.rollback()
+            results[index] = GuardianScanResult(
+                status="flagged" if exc.status_code == 403 else "rejected", detail=str(exc.detail)
+            )
+    return GuardianScanBatchResponse(results=results)  # type: ignore[arg-type]

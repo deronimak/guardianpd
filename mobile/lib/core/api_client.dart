@@ -275,7 +275,7 @@ class ApiClient {
     final response = await http.get(
       Uri.parse('$baseUrl/guardians/lookup?token=${Uri.encodeQueryComponent(qrToken)}'),
       headers: _headers(authenticated: true),
-    );
+    ).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, response.body);
     }
@@ -294,12 +294,39 @@ class ApiClient {
       Uri.parse('$baseUrl/attendance/scan'),
       headers: _headers(authenticated: true),
       body: jsonEncode({'token': qrToken, 'student_id': studentId, 'type': type}),
-    );
+    ).timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, response.body);
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
+  /// Guardians with active cards and their children, cached on the phone so
+  /// cards can be identified with no signal.
+  Future<List<Map<String, dynamic>>> guardianScanRoster() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/guardians/scan-roster'),
+      headers: _headers(authenticated: true),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Uploads guardian scans saved while offline. One result per scan, in order.
+  Future<List<Map<String, dynamic>>> scanBatch(List<Map<String, dynamic>> scans) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/attendance/scan/batch'),
+      headers: _headers(authenticated: true),
+      body: jsonEncode({'scans': scans}),
+    ).timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, response.body);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return (body['results'] as List).cast<Map<String, dynamic>>();
+  }
+
   /// The signed-in staff member's school profile — used to learn the
   /// school's credential mode ("guardian" or "pupil").
   Future<Map<String, dynamic>> getSchoolProfile() async {

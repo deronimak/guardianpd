@@ -33,6 +33,11 @@ class OfflineScanStore {
   List<Map<String, dynamic>> queue = [];
   List<Map<String, dynamic>> rejected = [];
   Map<String, Map<String, dynamic>> roster = {};
+  // Guardian-mode schools: guardian id -> guardian + the children they may
+  // collect (so a card can be identified with no signal), and the scans
+  // saved while offline, waiting to upload.
+  Map<String, Map<String, dynamic>> guardianRoster = {};
+  List<Map<String, dynamic>> guardianQueue = [];
   // pupil id -> md5 of the photo we have cached, to re-download only on change.
   Map<String, String> photoHashes = {};
   final Map<String, Uint8List> _photoMemory = {};
@@ -64,6 +69,10 @@ class OfflineScanStore {
           (k, v) => MapEntry(k as String, (v as Map).cast<String, dynamic>()),
         );
         credentialMode = data['credential_mode'] as String?;
+        guardianRoster = (data['guardian_roster'] as Map? ?? {}).map(
+          (k, v) => MapEntry(k as String, (v as Map).cast<String, dynamic>()),
+        );
+        guardianQueue = (data['guardian_queue'] as List? ?? []).cast<Map<String, dynamic>>();
         photoHashes = (data['photo_hashes'] as Map? ?? {}).map((k, v) => MapEntry(k as String, v as String));
       }
     } catch (_) {
@@ -78,6 +87,8 @@ class OfflineScanStore {
       'rejected': rejected,
       'roster': roster,
       'credential_mode': credentialMode,
+      'guardian_roster': guardianRoster,
+      'guardian_queue': guardianQueue,
       'photo_hashes': photoHashes,
     });
     _writeChain = _writeChain.then((_) async {
@@ -131,6 +142,52 @@ class OfflineScanStore {
           'scanned_at': sent[i]['scanned_at'],
           'detail': result['detail'] ?? 'Rejected',
           'name': nameForToken(sent[i]['token'] as String),
+        });
+      }
+    }
+    await _save();
+  }
+
+  Future<void> setGuardianRoster(List<Map<String, dynamic>> entries) async {
+    guardianRoster = {for (final e in entries) e['guardian_id'] as String: e};
+    await _save();
+  }
+
+  Future<void> enqueueGuardianScan({
+    required String token,
+    required String studentId,
+    required String type,
+    required DateTime scannedAt,
+    String? guardianName,
+    String? studentName,
+  }) async {
+    guardianQueue.add({
+      'token': token,
+      'student_id': studentId,
+      'type': type,
+      'scanned_at': scannedAt.toUtc().toIso8601String(),
+      if (guardianName != null) 'guardian_name': guardianName,
+      if (studentName != null) 'student_name': studentName,
+    });
+    await _save();
+  }
+
+  /// Applies the server's per-scan results (same order as [sent]) after a
+  /// batch upload: recorded/duplicate scans leave the queue; flagged (not
+  /// authorized for that child) and rejected ones move to [rejected] so staff
+  /// can see what needs attention instead of it silently disappearing.
+  Future<void> applyGuardianBatchResults(List<Map<String, dynamic>> sent, List<Map<String, dynamic>> results) async {
+    for (var i = 0; i < sent.length && i < results.length; i++) {
+      final result = results[i];
+      guardianQueue.remove(sent[i]);
+      final status = result['status'];
+      if (status == 'flagged' || status == 'rejected') {
+        final guardian = sent[i]['guardian_name'] as String? ?? 'Unknown guardian';
+        final student = sent[i]['student_name'] as String?;
+        rejected.add({
+          'scanned_at': sent[i]['scanned_at'],
+          'detail': result['detail'] ?? 'Rejected',
+          'name': student == null ? guardian : '$guardian / $student',
         });
       }
     }
@@ -200,6 +257,19 @@ class OfflineScanStore {
       final padded = payloadPart.padRight(payloadPart.length + (4 - payloadPart.length % 4) % 4, '=');
       final json = jsonDecode(utf8.decode(base64Url.decode(padded))) as Map<String, dynamic>;
       return json['pid'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The guardian id inside a guardian card's QR token, without verifying the
+  /// signature (see [pupilIdFromToken]); the server validates it on upload.
+  static String? guardianIdFromToken(String token) {
+    try {
+      final payloadPart = token.split('.').first;
+      final padded = payloadPart.padRight(payloadPart.length + (4 - payloadPart.length % 4) % 4, '=');
+      final json = jsonDecode(utf8.decode(base64Url.decode(padded))) as Map<String, dynamic>;
+      return json['gid'] as String?;
     } catch (_) {
       return null;
     }

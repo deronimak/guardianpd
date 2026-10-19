@@ -76,4 +76,38 @@ void main() {
     ];
     expect(store.suggestedTypeFor('pupil-1', now), 'drop_off');
   });
+  test('reads the guardian id from a guardian card token; a pupil card is not one', () {
+    expect(OfflineScanStore.guardianIdFromToken(_tokenFor({'gid': 'g-1', 'sid': 's', 'n': 'x'})), 'g-1');
+    expect(OfflineScanStore.guardianIdFromToken(_tokenFor({'pid': 'p-1', 'sid': 's', 'n': 'x'})), isNull);
+    expect(OfflineScanStore.guardianIdFromToken('garbage'), isNull);
+  });
+
+  test('saved guardian scans leave the queue once uploaded; unauthorized ones are kept for review', () async {
+    final store = OfflineScanStore.forSchool('unit-test-guardian-queue');
+    await store.load();
+    final token = _tokenFor({'gid': 'g-1'});
+    final fine = {
+      'token': token, 'student_id': 's1', 'type': 'drop_off', 'scanned_at': '2026-10-14T07:30:00Z',
+      'guardian_name': 'Mrs Offline', 'student_name': 'Kid One',
+    };
+    final bad = {
+      'token': token, 'student_id': 's2', 'type': 'pick_up', 'scanned_at': '2026-10-14T14:00:00Z',
+      'guardian_name': 'Mrs Offline', 'student_name': 'Someone Else',
+    };
+    store.guardianQueue = [fine, bad];
+    store.rejected = [];
+
+    await store.applyGuardianBatchResults(
+      [fine, bad],
+      [
+        {'status': 'recorded'},
+        {'status': 'flagged', 'detail': 'This guardian is not authorized for this child'},
+      ],
+    );
+
+    expect(store.guardianQueue, isEmpty);
+    expect(store.rejected, hasLength(1));
+    expect(store.rejected.first['name'], 'Mrs Offline / Someone Else');
+    expect(store.rejected.first['detail'], contains('not authorized'));
+  });
 }

@@ -17,6 +17,31 @@ class ScanResponse(BaseModel):
     flagged: bool
 
 
+class GuardianScanItem(BaseModel):
+    token: str
+    student_id: uuid.UUID
+    type: Literal["drop_off", "pick_up"]
+    # When the scan physically happened on the phone (set for scans saved
+    # offline and uploaded later, so records and parent alerts carry the
+    # real time).
+    scanned_at: datetime | None = None
+
+
+class GuardianScanResult(BaseModel):
+    # recorded / duplicate / flagged (guardian not authorized for this child) / rejected
+    status: str
+    detail: str | None = None
+    event_id: uuid.UUID | None = None
+
+
+class GuardianScanBatchRequest(BaseModel):
+    scans: list[GuardianScanItem] = Field(max_length=500)
+
+
+class GuardianScanBatchResponse(BaseModel):
+    results: list[GuardianScanResult]
+
+
 class PupilScanItem(BaseModel):
     token: str
     # "drop_off" = arrived at school, "pick_up" = left school. The scanning

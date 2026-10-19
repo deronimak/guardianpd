@@ -108,6 +108,14 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
                         ),
                         onPressed: () => _open(StaffScannerScreen(apiClient: widget.apiClient)),
                       ),
+                    if (!pupilMode && _store.guardianQueue.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        '${_store.guardianQueue.length} scan${_store.guardianQueue.length == 1 ? '' : 's'} saved offline, waiting to upload',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.amber.shade900),
+                      ),
+                    ],
                     if (!pupilMode) ...[
                       const SizedBox(height: 12),
                       OutlinedButton.icon(

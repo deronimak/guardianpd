@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/api_client.dart';
+import '../../core/offline_scan_store.dart';
 import 'station_lock.dart';
 
 class StaffScannerScreen extends StatefulWidget {
@@ -17,6 +20,16 @@ class StaffScannerScreen extends StatefulWidget {
 class _StaffScannerScreenState extends State<StaffScannerScreen> {
   final _manualTokenController = TextEditingController();
 
+  // Offline support: a cached list of guardians and their children, and scans
+  // saved on the phone when there is no signal, uploaded automatically later.
+  late final OfflineScanStore _store = OfflineScanStore.forSchool(widget.apiClient.schoolSlug);
+  Timer? _syncTimer;
+  bool _syncing = false;
+  bool _online = true;
+  bool _sessionExpired = false;
+  // The guardian on screen was identified from the saved list (no signal).
+  bool _offlineLookup = false;
+
   late bool _station = widget.station;
   String? _stationPin;
   // The front camera works like a mirror, so people can see where to hold
@@ -27,11 +40,135 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
   @override
   void initState() {
     super.initState();
+    _initOffline();
     if (_station) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!await _ensurePin() && mounted) Navigator.of(context).pop();
       });
     }
+  }
+
+  Future<void> _initOffline() async {
+    await _store.load();
+    if (mounted) setState(() {});
+    unawaited(_refreshRoster());
+    unawaited(_syncQueue());
+    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) => _syncQueue());
+  }
+
+  Future<void> _refreshRoster() async {
+    try {
+      await _store.setGuardianRoster(await widget.apiClient.guardianScanRoster());
+      if (mounted) setState(() => _online = true);
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) _sessionExpired = true;
+    } catch (_) {
+      if (mounted) setState(() => _online = false);
+    }
+  }
+
+  Future<void> _syncQueue() async {
+    if (_syncing || _store.guardianQueue.isEmpty) return;
+    _syncing = true;
+    if (mounted) setState(() {});
+    try {
+      final sent = List<Map<String, dynamic>>.from(_store.guardianQueue);
+      final results = await widget.apiClient.scanBatch([
+        for (final item in sent)
+          {
+            'token': item['token'],
+            'student_id': item['student_id'],
+            'type': item['type'],
+            'scanned_at': item['scanned_at'],
+          },
+      ]);
+      await _store.applyGuardianBatchResults(sent, results);
+      _sessionExpired = false;
+      if (mounted) setState(() => _online = true);
+      unawaited(_refreshRoster());
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) _sessionExpired = true;
+      // Other answers (e.g. subscription inactive): keep the saved scans.
+    } catch (_) {
+      if (mounted) setState(() => _online = false);
+    } finally {
+      _syncing = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _showRejected() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Scans that need attention'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Text('These saved scans could not be recorded. Please check them with the school office.',
+                  style: TextStyle(color: Colors.black54)),
+              const SizedBox(height: 8),
+              for (final r in _store.rejected)
+                ListTile(
+                  dense: true,
+                  title: Text(r['name'] as String? ?? 'Unknown'),
+                  subtitle: Text('${r['scanned_at']} - ${r['detail']}'),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _store.clearRejected();
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) setState(() {});
+            },
+            child: const Text('Clear'),
+          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBar() {
+    final pending = _store.guardianQueue.length;
+    final offline = !_online;
+    final color = _sessionExpired
+        ? Colors.orange.shade100
+        : offline
+            ? Colors.amber.shade100
+            : Colors.green.shade50;
+    final text = _sessionExpired
+        ? 'Session expired - sign in again to upload saved scans'
+        : offline
+            ? 'Offline - scans are saved on this phone'
+            : 'Online';
+    return Material(
+      color: color,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            Icon(offline || _sessionExpired ? Icons.cloud_off : Icons.cloud_done, size: 18),
+            const SizedBox(width: 8),
+            Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+            if (pending > 0) ...[
+              Text('$pending waiting', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              TextButton(
+                onPressed: _syncing ? null : _syncQueue,
+                child: Text(_syncing ? 'Syncing...' : 'Sync now'),
+              ),
+            ],
+            if (_store.rejected.isNotEmpty)
+              TextButton(onPressed: _showRejected, child: Text('${_store.rejected.length} need attention')),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<bool> _ensurePin() async {
@@ -78,9 +215,11 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
       _guardianName = null;
       _feesOutstanding = false;
       _students = null;
+      _offlineLookup = false;
     });
     try {
       final result = await widget.apiClient.lookupGuardianByQr(qrToken);
+      if (mounted) setState(() => _online = true);
       final students = (result['students'] as List).cast<Map<String, dynamic>>();
       setState(() {
         _pendingQrToken = qrToken;
@@ -93,25 +232,80 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
             : 'Select drop-off or pick-up, then the child';
       });
       _manualTokenController.clear();
-    } catch (e) {
-      setState(() => _status = 'Lookup failed: $e');
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        _sessionExpired = true;
+        _lookupOffline(qrToken);
+      } else {
+        setState(() => _status = 'Lookup failed: $e');
+      }
+    } catch (_) {
+      // No signal (or a timeout): identify the card from the saved list.
+      if (mounted) setState(() => _online = false);
+      _lookupOffline(qrToken);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  void _lookupOffline(String qrToken) {
+    final gid = OfflineScanStore.guardianIdFromToken(qrToken);
+    final entry = gid == null ? null : _store.guardianRoster[gid];
+    if (entry == null) {
+      setState(() => _status = 'No connection, and this card is not in the saved list. Try again when online.');
+      return;
+    }
+    final students = (entry['students'] as List).cast<Map<String, dynamic>>();
+    setState(() {
+      _offlineLookup = true;
+      _pendingQrToken = qrToken;
+      _guardianId = entry['guardian_id'] as String;
+      _guardianName = entry['guardian_name'] as String;
+      _feesOutstanding = entry['fees_outstanding'] as bool? ?? false;
+      _students = students;
+      _status = students.isEmpty
+          ? '${entry['guardian_name']} is not authorized for any student here'
+          : 'No connection: choose drop-off or pick-up, then the child. It will be saved and uploaded automatically.';
+    });
+  }
+
+  /// Records one child: live if possible, otherwise saved on the phone for
+  /// upload later. Returns the server's status ("recorded"/"duplicate"), or
+  /// "saved" when it was kept for later.
+  Future<String> _recordStudent(Map<String, dynamic> student) async {
+    final token = _pendingQrToken!;
+    final id = student['id'] as String;
+    if (!_offlineLookup) {
+      try {
+        final result = await widget.apiClient.scanQr(qrToken: token, studentId: id, type: _type);
+        if (mounted) setState(() => _online = true);
+        return result['status'] as String? ?? 'recorded';
+      } on ApiException catch (e) {
+        if (e.statusCode != 401) rethrow;
+        _sessionExpired = true;
+      } catch (_) {
+        if (mounted) setState(() => _online = false);
+      }
+    }
+    await _store.enqueueGuardianScan(
+      token: token,
+      studentId: id,
+      type: _type,
+      scannedAt: DateTime.now(),
+      guardianName: _guardianName,
+      studentName: student['name'] as String?,
+    );
+    return 'saved';
+  }
+
   Future<void> _recordAll() async {
     setState(() => _busy = true);
-    final recorded = <String>[];
+    final done = <String>[];
     final failed = <String>[];
     for (final student in _students!) {
       try {
-        final result = await widget.apiClient.scanQr(
-          qrToken: _pendingQrToken!,
-          studentId: student['id'] as String,
-          type: _type,
-        );
-        recorded.add('${student['name']} (${result['status']})');
+        final outcome = await _recordStudent(student);
+        done.add(outcome == 'saved' ? '${student['name']} (saved offline)' : '${student['name']} ($outcome)');
       } catch (e) {
         failed.add(student['name'] as String);
       }
@@ -120,43 +314,44 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
     setState(() {
       _busy = false;
       _status = failed.isEmpty
-          ? 'Recorded: ${recorded.join(', ')}'
-          : 'Recorded ${recorded.length}, failed: ${failed.join(', ')}';
-      _pendingQrToken = null;
-      _guardianId = null;
-      _guardianName = null;
-      _feesOutstanding = false;
-      _students = null;
+          ? 'Recorded: ${done.join(', ')}'
+          : 'Recorded ${done.length}, failed: ${failed.join(', ')}';
+      _clearGuardian();
     });
+    unawaited(_syncQueue());
   }
 
   Future<void> _recordFor(String studentId, String studentName) async {
     setState(() => _busy = true);
     try {
-      final result = await widget.apiClient.scanQr(
-        qrToken: _pendingQrToken!,
-        studentId: studentId,
-        type: _type,
-      );
-      setState(() => _status = 'Recorded: ${result['status']} for $studentName');
+      final student = _students!.firstWhere((s) => s['id'] == studentId);
+      final outcome = await _recordStudent(student);
+      setState(() => _status = outcome == 'saved'
+          ? 'Saved on this phone for $studentName - it will upload automatically'
+          : 'Recorded: $outcome for $studentName');
     } catch (e) {
       setState(() => _status = 'Scan failed: $e');
     } finally {
       if (mounted) {
-        setState(() {
-          _busy = false;
-          _pendingQrToken = null;
-          _guardianId = null;
-          _guardianName = null;
-          _feesOutstanding = false;
-          _students = null;
-        });
+        setState(_clearGuardian);
+        unawaited(_syncQueue());
       }
     }
   }
 
+  void _clearGuardian() {
+    _busy = false;
+    _pendingQrToken = null;
+    _guardianId = null;
+    _guardianName = null;
+    _feesOutstanding = false;
+    _students = null;
+    _offlineLookup = false;
+  }
+
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _camera.dispose();
     _manualTokenController.dispose();
     super.dispose();
@@ -196,6 +391,7 @@ class _StaffScannerScreenState extends State<StaffScannerScreen> {
         ),
         body: Column(
           children: [
+            _buildStatusBar(),
             Expanded(
               flex: _guardianId == null ? 3 : 1,
               child: Stack(
