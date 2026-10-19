@@ -8,7 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useChangePassword } from "../../api/auth";
 import { useToast } from "../../context/ToastContext";
 import { ApiError } from "../../lib/api";
-import { useSendTestSms, useSmsStatus } from "../../api/sms";
+import { useSendTestSms, useSmsDelivery, useSmsStatus } from "../../api/sms";
 import { usePushStatus, useSendTestPush, type PushTestResult } from "../../api/push";
 
 export function SettingsPage() {
@@ -17,6 +17,9 @@ export function SettingsPage() {
   const changePassword = useChangePassword();
   const smsStatus = useSmsStatus();
   const sendTestSms = useSendTestSms();
+  const smsDelivery = useSmsDelivery();
+  const [lastMessageId, setLastMessageId] = useState<string | null>(null);
+  const [deliveryText, setDeliveryText] = useState<string | null>(null);
   const pushStatus = usePushStatus();
   const sendTestPush = useSendTestPush();
   const [pushEmail, setPushEmail] = useState("");
@@ -111,10 +114,41 @@ export function SettingsPage() {
                 </Badge>
               ) : null}
             </div>
+            {smsStatus.data?.sender_status && (
+              <div className="flex items-center justify-between text-sm text-gray-600">
+                <span>Sender name “{smsStatus.data.sender_status.name}”</span>
+                <Badge tone={smsStatus.data.sender_status.status.toLowerCase() === "approved" ? "brand" : "gray"}>
+                  {smsStatus.data.sender_status.status}
+                </Badge>
+              </div>
+            )}
             <div>
               <Label>Send a test SMS to</Label>
               <Input placeholder="08012345678" value={testNumber} onChange={(e) => setTestNumber(e.target.value)} />
             </div>
+            {lastMessageId && (
+              <div className="space-y-1.5">
+                <Button
+                  variant="secondary"
+                  loading={smsDelivery.isPending}
+                  onClick={() => {
+                    setDeliveryText(null);
+                    smsDelivery.mutate(lastMessageId, {
+                      onSuccess: (r) =>
+                        setDeliveryText(
+                          r.reports.length
+                            ? r.reports.map((x) => `${x.recipient}: ${x.explanation}`).join(" | ")
+                            : "No delivery information yet. Try again in a minute."
+                        ),
+                      onError: (err) => setDeliveryText(err instanceof ApiError ? err.message : "Something went wrong."),
+                    });
+                  }}
+                >
+                  Check delivery status
+                </Button>
+                {deliveryText && <p className="text-xs font-medium text-gray-700">{deliveryText}</p>}
+              </div>
+            )}
             {smsMessage && (
               <p className={`text-xs font-medium ${smsMessage.ok ? "text-gray-700" : "text-danger-600"}`}>{smsMessage.text}</p>
             )}
@@ -125,14 +159,19 @@ export function SettingsPage() {
               disabled={!testNumber.trim()}
               onClick={() => {
                 setSmsMessage(null);
+                setLastMessageId(null);
+                setDeliveryText(null);
                 sendTestSms.mutate(testNumber.trim(), {
-                  onSuccess: (r) =>
+                  onSuccess: (r) => {
+                    if (r.message_id) setLastMessageId(String(r.message_id));
+                    return
                     setSmsMessage({
                       ok: true,
                       text: r.sent
                         ? `Sent to ${r.number}.${r.remaining_credits != null ? ` Credits left: ${r.remaining_credits}.` : ""}${r.cost != null ? ` Cost: ₦${r.cost}.` : ""}`
                         : r.detail,
-                    }),
+                    });
+                  },
                   onError: (err) => setSmsMessage({ ok: false, text: err instanceof ApiError ? err.message : "Something went wrong." }),
                 });
               }}

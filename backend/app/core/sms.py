@@ -124,13 +124,19 @@ def _send_bulksmsnigeria(number: str, message: str) -> dict:
         body = {}
     if response.status_code == 200 and isinstance(body, dict) and body.get("status") == "success":
         data = body.get("data") or {}
+        logger.info(
+            "SMS accepted by BulkSMSNigeria: to=%s message_id=%s gateway=%s cost=%s skipped=%s",
+            number, data.get("message_id"), data.get("gateway_used"), data.get("cost"), body.get("skipped_recipients"),
+        )
         return {
             "ok": True,
             "sent": True,
             "number": number,
             "message_id": data.get("message_id"),
             "cost": data.get("cost"),
-            "detail": "Sent",
+            "gateway": data.get("gateway_used"),
+            "skipped": body.get("skipped_recipients") or data.get("skipped_recipients"),
+            "detail": "Accepted by the SMS provider (delivery to the phone is a separate step: check delivery status)",
         }
     code, detail = _bulksmsng_error(response)
     if code == _BULKSMSNG_DUPLICATE:
@@ -155,6 +161,68 @@ def sms_balance() -> dict | None:
         return {"total_balance": balance.get("total_balance"), "currency": "NGN"}
     except Exception:
         logger.exception("Could not read the SMS balance")
+        return None
+
+
+_DELIVERED = {"delivrd", "delivered", "success"}
+
+
+def sms_delivery_report(message_id: str) -> dict:
+    """What actually happened to a message the provider accepted: delivered,
+    still waiting on the network, or failed (with the network's code).
+    BulkSMSNigeria only; raises RuntimeError on a provider error."""
+    if provider() != "bulksmsnigeria" or not settings.bulksmsnigeria_api_token:
+        raise RuntimeError("Delivery reports are only available with BulkSMSNigeria")
+    response = httpx.get(
+        f"{_BULKSMSNG_BASE}/delivery-reports",
+        params={"message_id": message_id},
+        headers={"Authorization": f"Bearer {settings.bulksmsnigeria_api_token}", "Accept": "application/json"},
+        timeout=15,
+    )
+    if response.status_code != 200:
+        code, detail = _bulksmsng_error(response)
+        raise RuntimeError(f"BulkSMSNigeria delivery report failed ({response.status_code}{', ' + code if code else ''}): {detail}")
+    body = response.json() or {}
+    data = body.get("data") if isinstance(body.get("data"), dict) else body
+    reports = []
+    for item in data.get("reports") or []:
+        raw = str(item.get("delivery_status") or "")
+        if raw.lower() in _DELIVERED:
+            state, explanation = "delivered", "Delivered to the phone"
+        elif "await" in raw.lower() or raw.lower() in ("", "pending", "queued"):
+            state, explanation = "pending", "Sent, still waiting for the network to confirm"
+        else:
+            state, explanation = "failed", f"Not delivered (network said: {raw})"
+        reports.append({"recipient": item.get("recipient"), "status": raw, "state": state, "explanation": explanation})
+    return {"summary": data.get("summary") or {}, "reports": reports}
+
+
+def sender_status() -> dict | None:
+    """Is our sender name registered with BulkSMSNigeria, and approved? Best
+    effort: returns {"name", "status"} or None if it can't be determined."""
+    if provider() != "bulksmsnigeria" or not settings.bulksmsnigeria_api_token:
+        return None
+    try:
+        response = httpx.get(
+            f"{_BULKSMSNG_BASE}/sender-ids",
+            headers={"Authorization": f"Bearer {settings.bulksmsnigeria_api_token}", "Accept": "application/json"},
+            timeout=8,
+        )
+        if response.status_code != 200:
+            return None
+        body = response.json()
+        rows = body.get("data") if isinstance(body, dict) else body
+        rows = rows.get("sender_ids", rows) if isinstance(rows, dict) else rows
+        wanted = sender_name().lower()
+        for row in rows or []:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("sender_id") or row.get("name") or row.get("sender") or "")
+            if name.lower() == wanted:
+                return {"name": name, "status": str(row.get("status") or "unknown")}
+        return {"name": sender_name(), "status": "not registered"}
+    except Exception:
+        logger.exception("Could not read sender ID status")
         return None
 
 

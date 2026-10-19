@@ -57,14 +57,9 @@ def test_bulksmsnigeria_request_shape(monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda url, **kw: calls.append((url, kw)) or _FakeResponse(200, _BSNG_OK))
 
     result = sms.send_sms_detailed("+234 814 824 7438", "Ada arrived at school.")
-    assert result == {
-        "ok": True,
-        "sent": True,
-        "number": "2348148247438",
-        "message_id": "abc-123",
-        "cost": 5.0,
-        "detail": "Sent",
-    }
+    assert result["ok"] is True and result["sent"] is True
+    assert result["number"] == "2348148247438" and result["message_id"] == "abc-123" and result["cost"] == 5.0
+    assert "delivery" in result["detail"].lower()
     url, kw = calls[0]
     assert url == "https://www.bulksmsnigeria.com/api/v2/sms"
     assert kw["headers"]["Authorization"] == "Bearer secret-token"
@@ -146,3 +141,53 @@ def test_test_endpoint_requires_platform_login_and_reports_results(client, platf
     monkeypatch.setattr(httpx, "post", lambda *a, **k: _FakeResponse(401, {"status": "error", "error": {"message": "Invalid token", "code": "BSNG-1000"}}))
     failed = client.post("/platform/sms/test", json={"to": "08148247438"}, headers=platform_auth_headers)
     assert failed.status_code == 502 and "Invalid token" in failed.json()["detail"]
+
+
+def test_delivery_report_explains_each_outcome(monkeypatch):
+    monkeypatch.setattr(settings, "bulksmsnigeria_api_token", "t")
+    body = {
+        "summary": {"total": 3, "delivered": 1, "pending": 1, "failed": 1},
+        "reports": [
+            {"recipient": "2348140000001", "delivery_status": "DELIVRD"},
+            {"recipient": "2348140000002", "delivery_status": "sent awaiting status"},
+            {"recipient": "2348140000003", "delivery_status": "REJECTD"},
+        ],
+    }
+    seen = {}
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: seen.update(url=url, params=kw.get("params")) or _FakeResponse(200, body))
+    report = sms.sms_delivery_report("abc-123")
+    assert seen["url"].endswith("/api/v2/delivery-reports") and seen["params"] == {"message_id": "abc-123"}
+    assert [r["state"] for r in report["reports"]] == ["delivered", "pending", "failed"]
+    assert "REJECTD" in report["reports"][2]["explanation"]
+
+
+def test_delivery_report_errors_and_other_provider(monkeypatch):
+    monkeypatch.setattr(settings, "bulksmsnigeria_api_token", "t")
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(404, {"error": {"message": "Unknown message", "code": "BSNG-4040"}}))
+    with pytest.raises(RuntimeError, match="BSNG-4040"):
+        sms.sms_delivery_report("nope")
+    monkeypatch.setattr(settings, "sms_provider", "brevo")
+    with pytest.raises(RuntimeError, match="only available with BulkSMSNigeria"):
+        sms.sms_delivery_report("x")
+
+
+def test_sender_status_reports_registered_pending_or_missing(monkeypatch):
+    assert sms.sender_status() is None  # no token
+    monkeypatch.setattr(settings, "bulksmsnigeria_api_token", "t")
+    rows = {"data": [{"sender_id": "OTHERNAME", "status": "approved"}, {"sender_id": "GUARDIANPD", "status": "pending"}]}
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(200, rows))
+    assert sms.sender_status() == {"name": "GUARDIANPD", "status": "pending"}
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(200, {"data": [{"sender_id": "OTHERNAME", "status": "approved"}]}))
+    assert sms.sender_status() == {"name": "GuardianPD", "status": "not registered"}
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(500, {}))
+    assert sms.sender_status() is None
+
+
+def test_delivery_endpoint_needs_login_and_maps_errors(client, platform_auth_headers, monkeypatch):
+    assert client.get("/platform/sms/delivery/abc").status_code == 401
+    monkeypatch.setattr(settings, "bulksmsnigeria_api_token", "t")
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(200, {"summary": {"total": 1}, "reports": [{"recipient": "234814", "delivery_status": "delivrd"}]}))
+    ok = client.get("/platform/sms/delivery/abc", headers=platform_auth_headers)
+    assert ok.status_code == 200 and ok.json()["reports"][0]["state"] == "delivered"
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(500, {"error": {"message": "boom", "code": "X"}}))
+    assert client.get("/platform/sms/delivery/abc", headers=platform_auth_headers).status_code == 502

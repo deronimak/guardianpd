@@ -7,7 +7,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import require_platform_staff
-from app.core.sms import provider, send_sms_detailed, sender_name, sms_balance, sms_configured
+from app.core.sms import (
+    provider,
+    send_sms_detailed,
+    sender_name,
+    sender_status,
+    sms_balance,
+    sms_configured,
+    sms_delivery_report,
+)
 
 router = APIRouter(prefix="/platform/sms", tags=["platform"], dependencies=[Depends(require_platform_staff)])
 
@@ -18,7 +26,17 @@ class SmsTestRequest(BaseModel):
 
 @router.get("/status")
 def sms_status() -> dict:
-    return {"configured": sms_configured(), "provider": provider(), "sender": sender_name(), "balance": sms_balance()}
+    return {"configured": sms_configured(), "provider": provider(), "sender": sender_name(), "balance": sms_balance(), "sender_status": sender_status()}
+
+
+@router.get("/delivery/{message_id}")
+def delivery_status(message_id: str) -> dict:
+    """What happened to a message the provider accepted (e.g. the id returned
+    by the test)."""
+    try:
+        return sms_delivery_report(message_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)[:300])
 
 
 @router.post("/test")
