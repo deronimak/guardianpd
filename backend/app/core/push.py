@@ -38,6 +38,10 @@ def _get_firebase_app():
     return _firebase_app
 
 
+def push_configured() -> bool:
+    return _get_firebase_app() is not None
+
+
 def send_push(device_token: str, title: str, body: str) -> None:
     app = _get_firebase_app()
     if app is None:
@@ -49,5 +53,9 @@ def send_push(device_token: str, title: str, body: str) -> None:
     message = messaging.Message(
         token=device_token,
         notification=messaging.Notification(title=title, body=body),
+        # iPhones only play a sound when the APNs payload asks for one;
+        # high priority makes Android deliver straight away too.
+        apns=messaging.APNSConfig(payload=messaging.APNSPayload(aps=messaging.Aps(sound="default"))),
+        android=messaging.AndroidConfig(priority="high"),
     )
     messaging.send(message, app=app)

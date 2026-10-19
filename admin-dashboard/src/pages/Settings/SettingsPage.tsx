@@ -9,6 +9,7 @@ import { useChangePassword } from "../../api/auth";
 import { useToast } from "../../context/ToastContext";
 import { ApiError } from "../../lib/api";
 import { useSendTestSms, useSmsStatus } from "../../api/sms";
+import { usePushStatus, useSendTestPush, type PushTestResult } from "../../api/push";
 
 export function SettingsPage() {
   const { role, logout } = useAuth();
@@ -16,6 +17,11 @@ export function SettingsPage() {
   const changePassword = useChangePassword();
   const smsStatus = useSmsStatus();
   const sendTestSms = useSendTestSms();
+  const pushStatus = usePushStatus();
+  const sendTestPush = useSendTestPush();
+  const [pushEmail, setPushEmail] = useState("");
+  const [pushResult, setPushResult] = useState<PushTestResult | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
   const [testNumber, setTestNumber] = useState("");
   const [smsMessage, setSmsMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -126,6 +132,53 @@ export function SettingsPage() {
               }}
             >
               Send test SMS
+            </Button>
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Push notifications"
+            description="Send a real test notification to every phone a parent has registered, and see exactly what Firebase answers for each one. Use this to check a new iPhone."
+          />
+          <CardBody className="space-y-4">
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <span>Firebase on the server</span>
+              {pushStatus.data ? (
+                <Badge tone={pushStatus.data.configured ? "brand" : "gray"}>
+                  {pushStatus.data.configured ? "Configured" : "Not configured"}
+                </Badge>
+              ) : null}
+            </div>
+            <div>
+              <Label>Parent's email</Label>
+              <Input placeholder="parent@example.com" value={pushEmail} onChange={(e) => setPushEmail(e.target.value)} />
+            </div>
+            {pushError && <p className="text-xs font-medium text-danger-600">{pushError}</p>}
+            {pushResult && (
+              <ul className="space-y-1.5 text-xs text-gray-700">
+                {pushResult.devices.map((d) => (
+                  <li key={d.token_tail + d.school} className={d.ok ? "" : "font-medium text-danger-600"}>
+                    {d.ok ? "OK" : "FAILED"} · {d.school} · registered as {d.registered_as} · ...{d.token_tail} · {d.detail}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardBody>
+          <div className="flex justify-end border-t border-gray-100 px-5 py-4">
+            <Button
+              loading={sendTestPush.isPending}
+              disabled={!pushEmail.trim()}
+              onClick={() => {
+                setPushError(null);
+                setPushResult(null);
+                sendTestPush.mutate(pushEmail.trim(), {
+                  onSuccess: (r) => setPushResult(r),
+                  onError: (err) => setPushError(err instanceof ApiError ? err.message : "Something went wrong."),
+                });
+              }}
+            >
+              Send test notification
             </Button>
           </div>
         </Card>

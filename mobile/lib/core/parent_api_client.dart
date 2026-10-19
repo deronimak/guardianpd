@@ -55,8 +55,8 @@ class ParentApiClient {
     return (jsonDecode(response.body) as List).cast<Map<String, dynamic>>();
   }
 
-  /// Registers a push-notification device token (Android — see
-  /// lib/core/push_registration.dart; iOS isn't wired up).
+  /// Registers a push-notification device token (Android and iOS, see
+  /// lib/core/push_registration.dart).
   Future<void> registerDevice({required String token, required String platform}) async {
     final response = await http.post(
       Uri.parse('$baseUrl/parent/me/devices'),
