@@ -191,3 +191,17 @@ def test_delivery_endpoint_needs_login_and_maps_errors(client, platform_auth_hea
     assert ok.status_code == 200 and ok.json()["reports"][0]["state"] == "delivered"
     monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(500, {"error": {"message": "boom", "code": "X"}}))
     assert client.get("/platform/sms/delivery/abc", headers=platform_auth_headers).status_code == 502
+
+
+def test_a_number_skipped_for_sender_approval_is_reported_as_not_sent(monkeypatch):
+    monkeypatch.setattr(settings, "bulksmsnigeria_api_token", "t")
+    monkeypatch.setattr(settings, "sms_gateway", "corporate")
+    body = {
+        "status": "success",
+        "data": {"message_id": "m1", "cost": 0, "recipients_count": 0, "gateway_used": "corporate"},
+        "skipped_recipients": ["2348140000001"],
+    }
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: _FakeResponse(200, body))
+    result = sms.send_sms_detailed("08140000001", "hi")
+    assert result["ok"] is True and result["sent"] is False
+    assert "not approved" in result["detail"] and result["gateway"] == "corporate"

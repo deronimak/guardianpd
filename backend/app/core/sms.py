@@ -128,6 +128,19 @@ def _send_bulksmsnigeria(number: str, message: str) -> dict:
             "SMS accepted by BulkSMSNigeria: to=%s message_id=%s gateway=%s cost=%s skipped=%s",
             number, data.get("message_id"), data.get("gateway_used"), data.get("cost"), body.get("skipped_recipients"),
         )
+        skipped = body.get("skipped_recipients") or data.get("skipped_recipients")
+        if skipped and not data.get("recipients_count"):
+            # Corporate/OTP routes only send to networks where the sender name is
+            # approved; anyone else is skipped, not sent and not charged.
+            return {
+                "ok": True,
+                "sent": False,
+                "number": number,
+                "message_id": data.get("message_id"),
+                "gateway": data.get("gateway_used"),
+                "skipped": skipped,
+                "detail": f"Not sent: the sender name {sender_name()} is not approved for this number's network on this route",
+            }
         return {
             "ok": True,
             "sent": True,
@@ -135,7 +148,7 @@ def _send_bulksmsnigeria(number: str, message: str) -> dict:
             "message_id": data.get("message_id"),
             "cost": data.get("cost"),
             "gateway": data.get("gateway_used"),
-            "skipped": body.get("skipped_recipients") or data.get("skipped_recipients"),
+            "skipped": skipped,
             "detail": "Accepted by the SMS provider (delivery to the phone is a separate step: check delivery status)",
         }
     code, detail = _bulksmsng_error(response)
