@@ -65,6 +65,11 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   final _manualTokenController = TextEditingController();
 
   late bool _station = widget.station;
+  // Station mode faces the pupil: the front camera works like a mirror, so
+  // they can see where to hold the card. Staff scanning with their own phone
+  // use the back camera as before.
+  late final MobileScannerController _camera =
+      MobileScannerController(facing: widget.station ? CameraFacing.front : CameraFacing.back);
   _ScanFeedback? _feedback;
   // Set between scanning a card and the user choosing arrived/leaving.
   _PendingScan? _pending;
@@ -107,6 +112,7 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
   void dispose() {
     _clearTimer?.cancel();
     _syncTimer?.cancel();
+    _camera.dispose();
     _manualTokenController.dispose();
     super.dispose();
   }
@@ -494,6 +500,13 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
           automaticallyImplyLeading: !_station,
           title: Text(_station ? 'Gate Station' : 'Scan Pupil Cards'),
           actions: [
+            // Some devices have a poor or missing front camera: let the
+            // supervisor flip it.
+            IconButton(
+              tooltip: 'Switch camera',
+              icon: const Icon(Icons.cameraswitch),
+              onPressed: () => _camera.switchCamera(),
+            ),
             if (_station)
               IconButton(
                 tooltip: 'Leave station mode',
@@ -505,7 +518,10 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
                 tooltip: 'Station mode',
                 icon: const Icon(Icons.lock_outline),
                 onPressed: () async {
-                  if (await _ensurePin() && mounted) setState(() => _station = true);
+                  if (await _ensurePin() && mounted) {
+                    setState(() => _station = true);
+                    if (_camera.value.cameraDirection == CameraFacing.back) await _camera.switchCamera();
+                  }
                 },
               ),
           ],
@@ -516,7 +532,8 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
             Expanded(
               child: Stack(
                 children: [
-                  MobileScanner(onDetect: _handleDetection),
+                  MobileScanner(controller: _camera, onDetect: _handleDetection),
+                  if (_station && _pending == null && _feedback == null) Positioned.fill(child: _buildFrameGuide()),
                   if (_feedback != null) Positioned.fill(child: _buildFeedback(_feedback!)),
                   if (_pending != null) Positioned.fill(child: _buildPending(_pending!)),
                 ],
@@ -562,6 +579,37 @@ class _PupilScannerScreenState extends State<PupilScannerScreen> {
                 onPressed: _showRejected,
                 child: Text('${_store.rejected.length} need attention'),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A frame drawn over the camera view at a gate station, so the pupil knows
+  /// where to hold their card.
+  Widget _buildFrameGuide() {
+    return IgnorePointer(
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 240,
+              height: 240,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 4),
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(999)),
+              child: const Text(
+                'Hold your card inside the box',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ),
           ],
         ),
       ),
