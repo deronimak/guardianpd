@@ -16,6 +16,8 @@ than blocking every other school from coming up.
 import logging
 import os
 
+from sqlalchemy import create_engine, inspect
+
 from alembic import command
 from alembic.config import Config
 
@@ -30,6 +32,37 @@ _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 
 def _alembic_config(ini_name: str) -> Config:
     return Config(os.path.join(_BACKEND_DIR, ini_name))
+
+
+def _stamp_if_unstamped_and_current(url: str) -> bool:
+    """A tenant database built by enrollment's create_all before it learned to
+    stamp has no migration history, so upgrading it from the first revision
+    fails. If it has tables but no history AND its schema exactly matches the
+    current models, it is by definition at the latest revision: record that.
+    Anything that differs is left alone (and fails loudly, as before) rather
+    than being guessed at. Returns True if it stamped.
+    """
+    from alembic import command
+    from alembic.autogenerate import compare_metadata
+    from alembic.runtime.migration import MigrationContext
+
+    from app.db.tenant import TenantBase
+
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            tables = inspect(conn).get_table_names()
+            if "alembic_version" in tables or not tables:
+                return False
+            if compare_metadata(MigrationContext.configure(conn), TenantBase.metadata):
+                return False
+    finally:
+        engine.dispose()
+
+    cfg = _alembic_config("alembic_tenant.ini")
+    cfg.attributes["tenant_url"] = url
+    command.stamp(cfg, "head")
+    return True
 
 
 def migrate_platform() -> None:
@@ -53,6 +86,8 @@ def migrate_all_tenants() -> tuple[int, int]:
         # .ini the way the platform one is).
         os.environ["TENANT_DATABASE_URL"] = tenant_url(school.tenant_db_name)
         try:
+            if _stamp_if_unstamped_and_current(tenant_url(school.tenant_db_name)):
+                logger.info("%s: unstamped tenant database matched the models; stamped at head", school.slug)
             command.upgrade(_alembic_config("alembic_tenant.ini"), "head")
             succeeded += 1
             logger.info("%s: tenant database migrated to head", school.slug)

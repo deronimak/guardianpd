@@ -85,6 +85,24 @@ def get_tenant_db_session(tenant_db_name: str) -> Generator[Session, None, None]
         session.close()
 
 
+def stamp_tenant_at_head(tenant_db_name: str) -> None:
+    """Records "this database is at the latest migration" in a tenant database
+    whose tables were just built straight from the models (enrollment uses
+    create_all). Without this, the database has no migration history, every
+    deploy's migration run tries to rebuild it from the very first revision and
+    fails, and — worse — future schema changes would never reach it.
+    """
+    import os
+
+    from alembic import command
+    from alembic.config import Config
+
+    backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cfg = Config(os.path.join(backend_dir, "alembic_tenant.ini"))
+    cfg.attributes["tenant_url"] = tenant_url(tenant_db_name)
+    command.stamp(cfg, "head")
+
+
 def provision_tenant_database(tenant_db_name: str) -> None:
     """Creates the tenant's database if it doesn't already exist.
 

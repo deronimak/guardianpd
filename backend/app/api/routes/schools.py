@@ -20,7 +20,7 @@ from app.core.audit import record_audit, resolve_platform_actor_label
 from app.core.email import send_email
 from app.core.security import hash_password
 from app.db.platform import SessionLocal, get_platform_db
-from app.db.tenant import get_tenant_engine, get_tenant_sessionmaker, provision_tenant_database
+from app.db.tenant import get_tenant_engine, get_tenant_sessionmaker, provision_tenant_database, stamp_tenant_at_head
 from app.db.twophase import get_twophase_session
 from app.models.platform import Invoice, School, Subscription
 from app.models.tenant import (
@@ -424,6 +424,7 @@ def enroll_school(payload: SchoolEnrollRequest) -> School:
     tenant_db_name = f"tenant_{payload.slug.replace('-', '_')}"
     provision_tenant_database(tenant_db_name)
     TenantBase.metadata.create_all(get_tenant_engine(tenant_db_name))
+    stamp_tenant_at_head(tenant_db_name)
 
     db = get_twophase_session(tenant_db_name)
     try:

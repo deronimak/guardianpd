@@ -14,7 +14,9 @@ if config.config_file_name is not None:
 # There's no single default tenant database — every school has its own — so
 # the target must be passed explicitly:
 #   TENANT_DATABASE_URL=postgresql+psycopg2://... alembic -c alembic_tenant.ini upgrade head
-tenant_url = os.environ.get("TENANT_DATABASE_URL")
+# (or programmatically, via config.attributes["tenant_url"], which avoids
+# touching the process-wide environment — see app/db/tenant.py)
+tenant_url = config.attributes.get("tenant_url") or os.environ.get("TENANT_DATABASE_URL")
 if not tenant_url:
     raise RuntimeError(
         "Set TENANT_DATABASE_URL to the target school's tenant database "
