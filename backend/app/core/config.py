@@ -45,11 +45,18 @@ class Settings(BaseSettings):
     # SMTP above. See app/core/push.py.
     firebase_credentials_json: str = ""
 
-    # SMS alerts for parents without the app go through Brevo's transactional
-    # SMS API using the same BREVO_API_KEY as email above (see app/core/sms.py).
-    # Needs SMS credits on the Brevo account and a sender name Brevo allows for
-    # Nigeria (up to 11 letters/digits). Until BREVO_API_KEY is set, SMS is
-    # logged instead of sent, same fallback as email/push.
+    # SMS alerts for parents without the app (app/core/sms.py). Provider is
+    # "bulksmsnigeria" (default: https://www.bulksmsnigeria.com, API token from
+    # its dashboard) or "brevo" (reuses BREVO_API_KEY above; needs SMS credits
+    # and a sender name Brevo allows for Nigeria). With no token for the chosen
+    # provider, SMS is logged instead of sent, same fallback as email/push.
+    sms_provider: str = "bulksmsnigeria"
+    bulksmsnigeria_api_token: str = ""
+    # BulkSMSNigeria route. "direct-refund" is its default and the one that
+    # doesn't need an approved sender ID; "corporate"/"otp" need one.
+    sms_gateway: str = "direct-refund"
+    # Name the text appears to come from: up to 11 letters/digits. Some routes
+    # require it to be registered with the provider first.
     sms_sender_id: str = "GuardianPD"
 
     # Paystack billing (ARCHITECTURE.md §4). Requires your own Paystack

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import require_platform_staff
-from app.core.sms import send_sms_detailed, sender_name, sms_configured
+from app.core.sms import provider, send_sms_detailed, sender_name, sms_balance, sms_configured
 
 router = APIRouter(prefix="/platform/sms", tags=["platform"], dependencies=[Depends(require_platform_staff)])
 
@@ -18,7 +18,7 @@ class SmsTestRequest(BaseModel):
 
 @router.get("/status")
 def sms_status() -> dict:
-    return {"configured": sms_configured(), "sender": sender_name()}
+    return {"configured": sms_configured(), "provider": provider(), "sender": sender_name(), "balance": sms_balance()}
 
 
 @router.post("/test")

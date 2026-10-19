@@ -3,7 +3,9 @@ import { apiFetch } from "../lib/api";
 
 export interface SmsStatus {
   configured: boolean;
+  provider: string;
   sender: string;
+  balance: { total_balance: number | null; currency: string } | null;
 }
 
 export interface SmsTestResult {
@@ -12,6 +14,7 @@ export interface SmsTestResult {
   number?: string;
   message_id?: number | string | null;
   remaining_credits?: number | null;
+  cost?: number | null;
   detail: string;
 }
 

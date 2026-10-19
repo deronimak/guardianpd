@@ -98,10 +98,16 @@ export function SettingsPage() {
           />
           <CardBody className="space-y-4">
             <div className="flex items-center justify-between text-sm text-gray-600">
-              <span>Brevo SMS key</span>
+              <span>SMS provider ({smsStatus.data?.provider === "brevo" ? "Brevo" : "BulkSMSNigeria"})</span>
               {smsStatus.data ? (
                 <Badge tone={smsStatus.data.configured ? "brand" : "gray"}>
-                  {smsStatus.data.configured ? `Configured (sender: ${smsStatus.data.sender})` : "Not configured"}
+                  {smsStatus.data.configured
+                    ? `Configured (sender: ${smsStatus.data.sender}${
+                        smsStatus.data.balance?.total_balance != null
+                          ? ` · balance: ₦${smsStatus.data.balance.total_balance.toLocaleString()}`
+                          : ""
+                      })`
+                    : "Not configured"}
                 </Badge>
               ) : null}
             </div>
@@ -124,7 +130,7 @@ export function SettingsPage() {
                     setSmsMessage({
                       ok: true,
                       text: r.sent
-                        ? `Sent to ${r.number}.${r.remaining_credits != null ? ` Credits left: ${r.remaining_credits}.` : ""}`
+                        ? `Sent to ${r.number}.${r.remaining_credits != null ? ` Credits left: ${r.remaining_credits}.` : ""}${r.cost != null ? ` Cost: ₦${r.cost}.` : ""}`
                         : r.detail,
                     }),
                   onError: (err) => setSmsMessage({ ok: false, text: err instanceof ApiError ? err.message : "Something went wrong." }),
