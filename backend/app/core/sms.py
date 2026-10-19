@@ -202,7 +202,12 @@ def sms_delivery_report(message_id: str) -> dict:
         raw = str(item.get("delivery_status") or "")
         if raw.lower() in _DELIVERED:
             state, explanation = "delivered", "Delivered to the phone"
-        elif "await" in raw.lower() or raw.lower() in ("", "pending", "queued"):
+        elif raw.lower() in ("scheduled", "queued", "pending", "submitted", "accepted", "enroute", ""):
+            state, explanation = "pending", (
+                "Waiting at the SMS provider, not yet handed to the network. "
+                "Some routes hold messages until sending hours; check again later"
+            )
+        elif "await" in raw.lower():
             state, explanation = "pending", "Sent, still waiting for the network to confirm"
         else:
             state, explanation = "failed", f"Not delivered (network said: {raw})"

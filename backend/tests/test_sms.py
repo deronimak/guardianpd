@@ -205,3 +205,11 @@ def test_a_number_skipped_for_sender_approval_is_reported_as_not_sent(monkeypatc
     result = sms.send_sms_detailed("08140000001", "hi")
     assert result["ok"] is True and result["sent"] is False
     assert "not approved" in result["detail"] and result["gateway"] == "corporate"
+
+
+def test_scheduled_and_queued_are_pending_not_failures(monkeypatch):
+    monkeypatch.setattr(settings, "bulksmsnigeria_api_token", "t")
+    body = {"reports": [{"recipient": "1", "delivery_status": "scheduled"}, {"recipient": "2", "delivery_status": "UNDELIV"}]}
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _FakeResponse(200, body))
+    states = [r["state"] for r in sms.sms_delivery_report("m")["reports"]]
+    assert states == ["pending", "failed"]
