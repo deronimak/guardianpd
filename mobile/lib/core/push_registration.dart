@@ -40,6 +40,17 @@ Future<String?> initializeAndRegisterPush(ParentApiClient client) async {
           'Turn them on in the phone\'s Settings to get arrival alerts.';
     }
 
+    // Register this BEFORE waiting for Apple: if the Apple token arrives late,
+    // FCM then issues a token and this registers it with no further action.
+    await _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = messaging.onTokenRefresh.listen((newToken) async {
+      try {
+        await client.registerDevice(token: newToken, platform: platform);
+      } catch (e) {
+        debugPrint('Push token registration (late/refresh) failed: $e');
+      }
+    });
+
     if (isIos) {
       // iOS shows banners only if told to while the app is open (otherwise a
       // parent with the app in front never sees the alert).
@@ -48,12 +59,12 @@ Future<String?> initializeAndRegisterPush(ParentApiClient client) async {
       // token, which can take a few seconds after permission is granted.
       // Asking too early throws "apns-token-not-set", so wait for it.
       String? apnsToken;
-      for (var attempt = 0; attempt < 20 && apnsToken == null; attempt++) {
+      for (var attempt = 0; attempt < 60 && apnsToken == null; attempt++) {
         apnsToken = await messaging.getAPNSToken();
         if (apnsToken == null) await Future<void>.delayed(const Duration(milliseconds: 500));
       }
       if (apnsToken == null) {
-        debugPrint('Push: no APNs token after 10s; push will not work on this device.');
+        debugPrint('Push: no APNs token after 30s; push will not work on this device.');
         return 'This iPhone could not get its Apple notification token (no-apns-token). '
             'Check that you are online, then tap Retry or reopen the app.';
       }
@@ -68,16 +79,8 @@ Future<String?> initializeAndRegisterPush(ParentApiClient client) async {
       return 'Could not register this phone with GuardianPD. Check your connection and tap Retry.';
     }
 
-    // FCM rotates tokens from time to time; keep the backend's copy current,
-    // or alerts silently stop reaching this phone.
-    await _tokenRefreshSubscription?.cancel();
-    _tokenRefreshSubscription = messaging.onTokenRefresh.listen((newToken) async {
-      try {
-        await client.registerDevice(token: newToken, platform: platform);
-      } catch (e) {
-        debugPrint('Push token refresh registration failed: $e');
-      }
-    });
+    // The refresh listener registered above also keeps the backend's copy
+    // current when FCM rotates the token, so alerts never silently stop.
     return null;
   } catch (e) {
     debugPrint('Push registration failed (continuing without it): $e');

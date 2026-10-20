@@ -63,7 +63,12 @@ workflows:
       # right signing certificate + provisioning profile automatically.
       app_store_connect: codemagic
     environment:
-      flutter: stable
+      # Pinned to the Flutter version the app is developed and tested with
+      # (3.29.3), NOT "stable": newer Flutter automatically converts the iPhone
+      # app to Apple's UIScene startup, after which firebase_messaging 15.x never
+      # asks Apple for the push token ("no-apns-token"). Revisit together with a
+      # firebase_messaging upgrade.
+      flutter: 3.29.3
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.schoolqr.mobile
