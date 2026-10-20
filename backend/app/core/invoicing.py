@@ -44,6 +44,9 @@ def send_invoice_created_email(invoice: Invoice, school: School, subscription: S
         period_end=invoice.period_end,
         child_count=invoice.child_count,
         price_per_child_naira=subscription.price_per_child_naira,
+        sms_count=invoice.sms_count,
+        price_per_sms_naira=float(invoice.price_per_sms_naira or 0),
+        sms_amount_naira=invoice.sms_amount_naira,
         amount_naira=invoice.amount_naira,
         due_date=invoice.due_date,
         checkout_url=checkout_url,
@@ -58,7 +61,13 @@ def send_invoice_created_email(invoice: Invoice, school: School, subscription: S
                 f"Attached is invoice {number} for {school.name}: {invoice.child_count} enrolled "
                 f"child(ren) for the billing period {invoice.period_start:%b %d, %Y} to "
                 f"{invoice.period_end:%b %d, %Y}.\n\n"
-                f"Amount due: {invoice.amount_naira:,} NGN ({subscription.price_per_child_naira:,} NGN per child).\n"
+                f"Amount due: {invoice.amount_naira:,} NGN ({subscription.price_per_child_naira:,} NGN per child"
+                + (
+                    f", plus {invoice.sms_count:,} SMS alert(s) to parents: {invoice.sms_amount_naira:,} NGN"
+                    if invoice.sms_count and invoice.sms_amount_naira
+                    else ""
+                )
+                + ").\n"
                 f"Due date: {invoice.due_date:%b %d, %Y}.\n\n"
                 + (f"Pay now: {checkout_url}\n\n" if checkout_url else "")
                 + "The invoice PDF is attached to this email.\n\n"

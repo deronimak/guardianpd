@@ -37,6 +37,7 @@ from app.core.invoicing import send_invoice_created_email
 from app.core.paystack import create_paystack_checkout
 from app.db.platform import get_platform_db
 from app.db.tenant import get_tenant_sessionmaker
+from app.core.sms_usage import count_sms, sms_charge
 from app.jobs.generate_invoices import next_period_start
 from app.models.platform import Invoice, School, Subscription
 from app.models.tenant import Student
@@ -60,6 +61,9 @@ def _invoice_out(invoice: Invoice, school_name: str) -> dict:
         "period_end": invoice.period_end,
         "child_count": invoice.child_count,
         "amount_naira": invoice.amount_naira,
+        "sms_count": invoice.sms_count,
+        "price_per_sms_naira": float(invoice.price_per_sms_naira or 0),
+        "sms_amount_naira": invoice.sms_amount_naira,
         "status": invoice.status,
         "due_date": invoice.due_date,
         "paid_at": invoice.paid_at,
@@ -139,7 +143,8 @@ def update_invoice(
     if "child_count" in updates and "amount_naira" not in updates:
         subscription = platform_db.query(Subscription).filter_by(school_id=invoice.school_id).first()
         rate = subscription.price_per_child_naira if subscription else 500
-        updates["amount_naira"] = updates["child_count"] * rate
+        # Keep the SMS charge already on the invoice; only the children part is recomputed.
+        updates["amount_naira"] = updates["child_count"] * rate + invoice.sms_amount_naira
 
     for field, value in updates.items():
         setattr(invoice, field, value)
@@ -264,6 +269,7 @@ def update_subscription(
         "status": "updated",
         "subscription_status": subscription.status,
         "price_per_child_naira": subscription.price_per_child_naira,
+        "price_per_sms_naira": float(subscription.price_per_sms_naira or 0),
         "started_at": subscription.started_at,
     }
 
@@ -303,13 +309,18 @@ def create_manual_invoice(school_id: uuid.UUID, platform_db: Session = Depends(g
     finally:
         tenant_db.close()
 
-    amount = child_count * subscription.price_per_child_naira
+    sms_count = count_sms(school, period_start, period_end)
+    sms_amount = sms_charge(sms_count, subscription.price_per_sms_naira)
+    amount = child_count * subscription.price_per_child_naira + sms_amount
     invoice = Invoice(
         school_id=school.id,
         period_start=period_start,
         period_end=period_end,
         child_count=child_count,
         amount_naira=amount,
+        sms_count=sms_count,
+        price_per_sms_naira=subscription.price_per_sms_naira,
+        sms_amount_naira=sms_amount,
         status="pending",
         due_date=period_end,
     )

@@ -1,10 +1,11 @@
 """Platform (central) DB models — ARCHITECTURE.md §3."""
 
 import uuid
+from decimal import Decimal
 from datetime import date, datetime
 from datetime import time as dt_time
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Identity, Integer, LargeBinary, String, Time, UniqueConstraint, func
+from sqlalchemy import Numeric, Boolean, Date, DateTime, ForeignKey, Identity, Integer, LargeBinary, String, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -97,6 +98,10 @@ class Subscription(PlatformBase):
     # app/jobs/generate_invoices.py and the manual-invoice endpoint instead
     # of a hardcoded constant.
     price_per_child_naira: Mapped[int] = mapped_column(Integer, default=500)
+    # What this school is charged per SMS alert sent to its parents (0 = SMS
+    # is not billed). Fractions of a naira are allowed; the invoice total is
+    # rounded to whole naira. See app/core/sms_usage.py.
+    price_per_sms_naira: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=0, server_default="0")
 
 
 class Invoice(PlatformBase):
@@ -114,7 +119,12 @@ class Invoice(PlatformBase):
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
     child_count: Mapped[int] = mapped_column(Integer)
-    amount_naira: Mapped[int] = mapped_column(Integer)
+    amount_naira: Mapped[int] = mapped_column(Integer)  # the TOTAL due (children + SMS)
+    # SMS alerts the school used during this period, billed on top of the
+    # per-child charge at the rate that applied when the invoice was made.
+    sms_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    price_per_sms_naira: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=0, server_default="0")
+    sms_amount_naira: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # pending / paid / overdue / cancelled
     status: Mapped[str] = mapped_column(String(20), default="pending")
     due_date: Mapped[date] = mapped_column(Date)

@@ -16,6 +16,8 @@ class SubscriptionUpdateRequest(BaseModel):
 
     status: str | None = None
     price_per_child_naira: int | None = Field(default=None, ge=0)
+    # Per SMS alert, in naira; fractions allowed (e.g. 6.5). 0 = SMS not billed.
+    price_per_sms_naira: float | None = Field(default=None, ge=0, le=1000)
     started_at: datetime | None = None
 
     @field_validator("status")
@@ -37,6 +39,7 @@ class SubscriptionOut(BaseModel):
     school_id: uuid.UUID
     status: str
     price_per_child_naira: int
+    price_per_sms_naira: float = 0
     started_at: datetime
 
 
@@ -62,6 +65,9 @@ class InvoiceOut(BaseModel):
     period_end: date
     child_count: int
     amount_naira: int
+    sms_count: int = 0
+    price_per_sms_naira: float = 0
+    sms_amount_naira: int = 0
     status: str
     due_date: date
     paid_at: datetime | None

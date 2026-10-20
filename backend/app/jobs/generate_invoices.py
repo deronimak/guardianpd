@@ -19,6 +19,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.core.invoicing import send_invoice_created_email
+from app.core.sms_usage import count_sms, sms_charge
 from app.db.platform import SessionLocal as PlatformSessionLocal
 from app.db.tenant import get_tenant_sessionmaker
 from app.models.platform import Invoice, School, Subscription
@@ -81,13 +82,18 @@ def generate_invoices_for_all_schools(now: dt.datetime | None = None) -> int:
             finally:
                 tenant_db.close()
 
-            amount = child_count * subscription.price_per_child_naira
+            sms_count = count_sms(school, period_start, period_end)
+            sms_amount = sms_charge(sms_count, subscription.price_per_sms_naira)
+            amount = child_count * subscription.price_per_child_naira + sms_amount
             invoice = Invoice(
                 school_id=school.id,
                 period_start=period_start,
                 period_end=period_end,
                 child_count=child_count,
                 amount_naira=amount,
+                sms_count=sms_count,
+                price_per_sms_naira=subscription.price_per_sms_naira,
+                sms_amount_naira=sms_amount,
                 status="pending",
                 due_date=period_end,
             )
@@ -97,7 +103,7 @@ def generate_invoices_for_all_schools(now: dt.datetime | None = None) -> int:
             created += 1
 
             send_invoice_created_email(invoice, school, subscription)
-            logger.info("%s: generated invoice for %d child(ren) (%d NGN)", school.slug, child_count, amount)
+            logger.info("%s: generated invoice for %d child(ren) + %d SMS (%d NGN)", school.slug, child_count, sms_count, amount)
     finally:
         platform_db.close()
 

@@ -47,6 +47,8 @@ export function ReportsPage() {
             "Period start": formatDate(i.period_start),
             "Period end": formatDate(i.period_end),
             Children: i.child_count,
+            "SMS sent": i.sms_count,
+            "SMS charge (NGN)": i.sms_amount_naira,
             "Amount (NGN)": i.amount_naira,
             Status: i.status,
             Due: formatDate(i.due_date),

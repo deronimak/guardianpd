@@ -262,5 +262,8 @@ def send_sms_detailed(raw_number: str, message: str) -> dict:
 
 
 def send_sms(raw_number: str, message: str) -> bool:
-    """True if a send was attempted (or logged in dev), False if the number was unusable."""
-    return bool(send_sms_detailed(raw_number, message)["ok"])
+    """True only if the provider actually accepted a message. False for an
+    unusable number, a dev-mode log-only send, a duplicate the provider
+    refused, or a recipient it skipped — none of which cost anything, and
+    callers (billing) must not count them."""
+    return bool(send_sms_detailed(raw_number, message).get("sent"))

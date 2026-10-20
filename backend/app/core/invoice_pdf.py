@@ -33,6 +33,9 @@ def generate_invoice_pdf(
     amount_naira: int,
     due_date: dt.date,
     checkout_url: str | None,
+    sms_count: int = 0,
+    price_per_sms_naira: float = 0,
+    sms_amount_naira: int = 0,
 ) -> bytes:
     import io
 
@@ -99,18 +102,27 @@ def generate_invoice_pdf(
     pdf.setFont("Helvetica-Bold", 9)
     pdf.setFillColor(HexColor("#FFFFFF"))
     pdf.drawString(col_desc_x + 0.1 * inch, y + 0.04 * inch, "DESCRIPTION")
-    pdf.drawCentredString(col_qty_x, y + 0.04 * inch, "CHILDREN")
+    pdf.drawCentredString(col_qty_x, y + 0.04 * inch, "QUANTITY")
     pdf.drawCentredString(col_rate_x, y + 0.04 * inch, "RATE")
     pdf.drawRightString(col_amount_x - 0.1 * inch, y + 0.04 * inch, "AMOUNT")
     y -= 0.45 * inch
 
     pdf.setFont("Helvetica", 11)
     pdf.setFillColor(_TEXT)
+    children_amount = amount_naira - sms_amount_naira  # also correct if the total was manually overridden
     pdf.drawString(col_desc_x + 0.1 * inch, y, "Per-child attendance billing")
     pdf.drawCentredString(col_qty_x, y, str(child_count))
     pdf.drawCentredString(col_rate_x, y, f"{price_per_child_naira:,} NGN")
-    pdf.drawRightString(col_amount_x - 0.1 * inch, y, f"{amount_naira:,} NGN")
+    pdf.drawRightString(col_amount_x - 0.1 * inch, y, f"{children_amount:,} NGN")
     y -= 0.3 * inch
+
+    if sms_count:
+        rate_text = f"{price_per_sms_naira:,.2f}".rstrip("0").rstrip(".")
+        pdf.drawString(col_desc_x + 0.1 * inch, y, "SMS alerts to parents")
+        pdf.drawCentredString(col_qty_x, y, f"{sms_count:,} SMS")
+        pdf.drawCentredString(col_rate_x, y, f"{rate_text} NGN")
+        pdf.drawRightString(col_amount_x - 0.1 * inch, y, f"{sms_amount_naira:,} NGN")
+        y -= 0.3 * inch
 
     pdf.setStrokeColor(HexColor("#E5E7EB"))
     pdf.line(margin, y, page_width - margin, y)

@@ -84,6 +84,9 @@ class SchoolDetailOut(BaseModel):
     child_count: int
     guardian_count: int
     qr_printed_count: int
+    price_per_sms_naira: float = 0
+    sms_count_this_period: int = 0
+    sms_amount_this_period: int = 0
     archived_at: datetime | None = None
     has_logo: bool = False
     credential_mode: str = "guardian"

@@ -66,6 +66,8 @@ export function InvoicesPage() {
         "Period start": formatDate(inv.period_start),
         "Period end": formatDate(inv.period_end),
         Children: inv.child_count,
+        "SMS sent": inv.sms_count,
+        "SMS charge (NGN)": inv.sms_amount_naira,
         "Amount (NGN)": inv.amount_naira,
         Status: inv.status,
         Due: formatDate(inv.due_date),
@@ -181,6 +183,7 @@ export function InvoicesPage() {
                 <Th>School</Th>
                 <Th>Period</Th>
                 <Th>Children</Th>
+                <Th>SMS</Th>
                 <Th>Amount</Th>
                 <Th>Status</Th>
                 <Th>Due</Th>
@@ -203,6 +206,7 @@ export function InvoicesPage() {
                       {formatDate(inv.period_start)} – {formatDate(inv.period_end)}
                     </Td>
                     <Td>{inv.child_count}</Td>
+                    <Td className="text-gray-600">{inv.sms_count > 0 ? `${inv.sms_count} (${formatNaira(inv.sms_amount_naira)})` : "—"}</Td>
                     <Td className="font-medium text-gray-900">{formatNaira(inv.amount_naira)}</Td>
                     <Td>
                       <Badge tone={STATUS_TONE[inv.status] ?? "gray"}>

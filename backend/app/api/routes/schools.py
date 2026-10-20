@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_platform_staff
 from app.core.audit import record_audit, resolve_platform_actor_label
+from app.core.sms_usage import count_sms, sms_charge
 from app.core.email import send_email
 from app.core.security import hash_password
 from app.db.platform import SessionLocal, get_platform_db
@@ -146,6 +147,8 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
     finally:
         tenant_db.close()
 
+    sms_this_period = count_sms(school, current_period_start, current_period_end)
+
     return {
         "id": school.id,
         "sequence_no": school.sequence_no,
@@ -163,6 +166,9 @@ def get_school_detail(school_id: uuid.UUID, platform_db: Session = Depends(get_p
         "child_count": child_count,
         "guardian_count": guardian_count,
         "qr_printed_count": qr_printed_count,
+        "price_per_sms_naira": float(subscription.price_per_sms_naira or 0) if subscription else 0,
+        "sms_count_this_period": sms_this_period,
+        "sms_amount_this_period": sms_charge(sms_this_period, subscription.price_per_sms_naira) if subscription else 0,
         "archived_at": school.archived_at,
         "has_logo": school.logo is not None,
         "credential_mode": school.credential_mode,

@@ -103,7 +103,7 @@ export function useUpdateSubscription(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: SubscriptionUpdateRequest) =>
-      apiFetch<{ status: string; subscription_status: string; price_per_child_naira: number; started_at: string }>(
+      apiFetch<{ status: string; subscription_status: string; price_per_child_naira: number; price_per_sms_naira: number; started_at: string }>(
         `/platform/schools/${id}/subscription`,
         { method: "PATCH", body: JSON.stringify(input) }
       ),

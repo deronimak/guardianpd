@@ -90,6 +90,7 @@ export function SchoolDetailPage() {
   const [subscriptionForm, setSubscriptionForm] = useState<{
     status: SubscriptionStatus;
     price_per_child_naira: number;
+    price_per_sms_naira: string; // text so decimals can be typed (e.g. 6.5)
     started_at: string;
   } | null>(null);
 
@@ -159,6 +160,7 @@ export function SchoolDetailPage() {
     setSubscriptionForm({
       status: school.subscription_status,
       price_per_child_naira: school.price_per_child_naira,
+      price_per_sms_naira: String(school.price_per_sms_naira ?? 0),
       started_at: school.started_at.slice(0, 10),
     });
   };
@@ -298,6 +300,7 @@ export function SchoolDetailPage() {
                   <tr>
                     <Th>Period</Th>
                     <Th>Children</Th>
+                    <Th>SMS</Th>
                     <Th>Amount</Th>
                     <Th>Status</Th>
                     <Th>Due</Th>
@@ -311,6 +314,7 @@ export function SchoolDetailPage() {
                         {formatDate(inv.period_start)} – {formatDate(inv.period_end)}
                       </Td>
                       <Td>{inv.child_count}</Td>
+                      <Td className="text-gray-600">{inv.sms_count > 0 ? `${inv.sms_count} (${formatNaira(inv.sms_amount_naira)})` : "—"}</Td>
                       <Td className="font-medium text-gray-900">{formatNaira(inv.amount_naira)}</Td>
                       <Td>
                         <Badge
@@ -420,6 +424,21 @@ export function SchoolDetailPage() {
                     </div>
                   </div>
                   <div>
+                    <Label>Price per SMS alert (₦)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      value={subscriptionForm.price_per_sms_naira}
+                      onChange={(e) =>
+                        setSubscriptionForm((p) => (p ? { ...p, price_per_sms_naira: e.target.value } : p))
+                      }
+                    />
+                    <p className="mt-1.5 text-xs text-gray-500">
+                      Charged on the invoice for each SMS sent to this school's parents. 0 = not billed.
+                    </p>
+                  </div>
+                  <div>
                     <Label>Billing anchor date</Label>
                     <Input
                       type="date"
@@ -441,6 +460,7 @@ export function SchoolDetailPage() {
                           {
                             status: subscriptionForm.status,
                             price_per_child_naira: subscriptionForm.price_per_child_naira,
+                            price_per_sms_naira: Number(subscriptionForm.price_per_sms_naira) || 0,
                             started_at: new Date(subscriptionForm.started_at).toISOString(),
                           },
                           {
@@ -466,6 +486,10 @@ export function SchoolDetailPage() {
                 <>
                   <DetailRow label="Status" value={<StatusBadge status={school.subscription_status} map="subscription" />} />
                   <DetailRow label="Price per child" value={formatNaira(school.price_per_child_naira)} />
+                  <DetailRow
+                    label="Price per SMS"
+                    value={school.price_per_sms_naira > 0 ? `₦${school.price_per_sms_naira}` : "Not billed"}
+                  />
                   <DetailRow label="Billing anchor" value={formatDate(school.started_at)} />
                   <div className="flex justify-end gap-2 pt-1">
                     {school.subscription_status !== "suspended" ? (
@@ -488,7 +512,12 @@ export function SchoolDetailPage() {
             <CardBody className="space-y-3.5">
               <DetailRow label="Children billed" value={String(school.child_count)} />
               <DetailRow label="Current period" value={`${formatDate(school.current_period_start)} – ${formatDate(school.current_period_end)}`} />
-              <DetailRow label="Amount this period" value={formatNaira(school.child_count * school.price_per_child_naira)} />
+              <DetailRow label="SMS alerts this period" value={String(school.sms_count_this_period)} />
+              <DetailRow label="SMS charge this period" value={formatNaira(school.sms_amount_this_period)} />
+              <DetailRow
+                label="Amount this period"
+                value={formatNaira(school.child_count * school.price_per_child_naira + school.sms_amount_this_period)}
+              />
             </CardBody>
           </Card>
 
@@ -700,7 +729,13 @@ export function SchoolDetailPage() {
         title="Create and send invoice?"
         description={`This generates an invoice for ${school.child_count} child(ren) at ${formatNaira(
           school.price_per_child_naira
-        )} each (${formatNaira(school.child_count * school.price_per_child_naira)} total) and emails it with a payment link if a billing email is on file.`}
+        )} each${
+          school.sms_count_this_period > 0 && school.sms_amount_this_period > 0
+            ? ` plus ${school.sms_count_this_period} SMS alert(s) (${formatNaira(school.sms_amount_this_period)})`
+            : ""
+        } (${formatNaira(
+          school.child_count * school.price_per_child_naira + school.sms_amount_this_period
+        )} total) and emails it with a payment link if a billing email is on file.`}
         confirmLabel="Create invoice"
         danger={false}
         loading={createManualInvoice.isPending}

@@ -41,6 +41,9 @@ export interface SchoolDetail {
   credential_mode: "guardian" | "pupil";
   // SMS alerts to parents who have no app registered (costs money per message)
   sms_enabled: boolean;
+  price_per_sms_naira: number;
+  sms_count_this_period: number;
+  sms_amount_this_period: number;
   subscription_status: SubscriptionStatus;
   price_per_child_naira: number;
   started_at: string;
@@ -57,6 +60,7 @@ export interface SubscriptionUpdateRequest {
   status?: SubscriptionStatus;
   price_per_child_naira?: number;
   started_at?: string;
+  price_per_sms_naira?: number;
 }
 
 // Matches AuditLogEntryOut (backend/app/schemas/audit.py)
@@ -100,7 +104,10 @@ export interface Invoice {
   period_start: string;
   period_end: string;
   child_count: number;
-  amount_naira: number;
+  amount_naira: number; // total due: children + SMS
+  sms_count: number;
+  price_per_sms_naira: number;
+  sms_amount_naira: number;
   status: InvoiceStatus;
   due_date: string;
   paid_at: string | null;
