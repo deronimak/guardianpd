@@ -17,6 +17,9 @@ class ParentHomeScreen extends StatefulWidget {
 
 class _ParentHomeScreenState extends State<ParentHomeScreen> {
   late Future<List<Map<String, dynamic>>> _childrenFuture;
+  // Why this phone can't get notifications, if it can't (null = fine).
+  String? _pushProblem;
+  bool _pushRetrying = false;
 
   @override
   void initState() {
@@ -24,14 +27,52 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
     _childrenFuture = widget.apiClient.myChildren();
     // Fire-and-forget: push registration failing shouldn't block the
     // parent from seeing their children list.
-    initializeAndRegisterPush(widget.apiClient);
+    _registerPush();
+  }
+
+  Future<void> _registerPush() async {
+    setState(() => _pushRetrying = true);
+    final problem = await initializeAndRegisterPush(widget.apiClient);
+    if (mounted) {
+      setState(() {
+        _pushProblem = problem;
+        _pushRetrying = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('My Children')),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
+      body: Column(
+        children: [
+          if (_pushProblem != null)
+            Material(
+              color: Colors.amber.shade100,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.notifications_off, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(_pushProblem!, style: const TextStyle(fontSize: 13))),
+                    TextButton(
+                      onPressed: _pushRetrying ? null : _registerPush,
+                      child: Text(_pushRetrying ? '...' : 'Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Expanded(child: _buildChildren()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChildren() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
         future: _childrenFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
@@ -69,7 +110,6 @@ class _ParentHomeScreenState extends State<ParentHomeScreen> {
             },
           );
         },
-      ),
     );
   }
 }

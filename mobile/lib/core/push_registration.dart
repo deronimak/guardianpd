@@ -14,11 +14,12 @@ StreamSubscription<String>? _tokenRefreshSubscription;
 /// Android and iOS (the `kIsWeb` guard below excludes web only) — Firebase
 /// web needs its own service worker setup we haven't added.
 ///
-/// Failures here are swallowed (logged only) — push notifications are a
-/// nice-to-have; a parent should still be able to use the app if
-/// registration fails for some reason (e.g. no google-services.json yet).
-Future<void> initializeAndRegisterPush(ParentApiClient client) async {
-  if (kIsWeb) return;
+/// Never throws — push is a nice-to-have, so the app keeps working if it fails.
+/// Returns null on success, or a short plain-language reason the phone could
+/// not be set up for notifications, which the parent home screen shows with a
+/// Retry button (otherwise a failure is completely invisible).
+Future<String?> initializeAndRegisterPush(ParentApiClient client) async {
+  if (kIsWeb) return null;
 
   try {
     // Already initialized in main.dart on a normal app launch — this guard
@@ -34,7 +35,10 @@ Future<void> initializeAndRegisterPush(ParentApiClient client) async {
     final settings = await messaging.requestPermission();
     final authorized = settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional;
-    if (!authorized) return;
+    if (!authorized) {
+      return 'Notifications are turned off for GuardianPD on this phone. '
+          'Turn them on in the phone\'s Settings to get arrival alerts.';
+    }
 
     if (isIos) {
       // iOS shows banners only if told to while the app is open (otherwise a
@@ -50,13 +54,19 @@ Future<void> initializeAndRegisterPush(ParentApiClient client) async {
       }
       if (apnsToken == null) {
         debugPrint('Push: no APNs token after 10s; push will not work on this device.');
-        return;
+        return 'This iPhone could not get its Apple notification token (no-apns-token). '
+            'Check that you are online, then tap Retry or reopen the app.';
       }
     }
 
     final token = await messaging.getToken();
-    if (token == null) return;
-    await client.registerDevice(token: token, platform: platform);
+    if (token == null) return 'No notification token was issued for this phone (no-fcm-token).';
+    try {
+      await client.registerDevice(token: token, platform: platform);
+    } catch (e) {
+      debugPrint('Push device registration failed: $e');
+      return 'Could not register this phone with GuardianPD. Check your connection and tap Retry.';
+    }
 
     // FCM rotates tokens from time to time; keep the backend's copy current,
     // or alerts silently stop reaching this phone.
@@ -68,7 +78,10 @@ Future<void> initializeAndRegisterPush(ParentApiClient client) async {
         debugPrint('Push token refresh registration failed: $e');
       }
     });
+    return null;
   } catch (e) {
     debugPrint('Push registration failed (continuing without it): $e');
+    final text = e.toString().replaceAll('\n', ' ');
+    return 'Notification setup failed: ${text.length > 140 ? text.substring(0, 140) : text}';
   }
 }
