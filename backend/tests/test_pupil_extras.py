@@ -71,6 +71,10 @@ def test_sms_goes_only_to_parents_without_the_app_and_only_when_enabled(
     number, text = sent_sms[0]
     assert number == "08148247438"  # normalization happens inside send_sms
     assert "Sms Kid left school" in text and "Test Academy" in text
+    # The SMS states the time of the scan, in the school's own time zone.
+    import re
+
+    assert re.search(r"Sms Kid left school at \d{1,2}:\d{2} [AP]M\.", text), text
 
     db = _tenant_session(pupil_school)
     try:
@@ -181,3 +185,27 @@ def test_csv_import_creates_pupils_and_families_and_is_rerunnable(client, pupil_
 def test_import_closed_in_guardian_mode(client, enrolled_school, school_admin_headers):
     resp = client.post("/pupil-cards/import", json={"rows": [{"pupil_name": "X"}]}, headers=school_admin_headers)
     assert resp.status_code == 403
+
+
+def test_sms_for_an_offline_scan_states_the_time_it_actually_happened(
+    client, platform_auth_headers, pupil_school, school_admin_headers, school_staff_headers, sent_sms
+):
+    import datetime as dt
+    import re
+
+    sid = _enroll_family(client, school_admin_headers, child="Late Kid")
+    token = _print_card(client, school_admin_headers, pupil_school, sid)
+    client.patch(
+        f"/platform/schools/{pupil_school['school']['id']}", json={"sms_enabled": True}, headers=platform_auth_headers
+    )
+
+    scanned = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=2)  # school timezone in tests is UTC
+    resp = client.post(
+        "/attendance/pupil-scan/batch",
+        json={"scans": [{"token": token, "type": "drop_off", "scanned_at": scanned.isoformat()}]},
+        headers=school_staff_headers,
+    )
+    assert resp.json()["results"][0]["status"] == "recorded"
+    assert len(sent_sms) == 1
+    expected = scanned.strftime("%I:%M %p").lstrip("0")
+    assert f"Late Kid arrived at school at {expected}." in sent_sms[0][1], sent_sms[0][1]

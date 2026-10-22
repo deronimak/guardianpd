@@ -158,11 +158,12 @@ def _record_pupil_scan(
 
     action = "arrived at school" if event_type == "drop_off" else "left school"
     core = f"{student.name} {action}"
+    # The time the pupil actually went through the gate (school-local), so an
+    # SMS delivered late, or read much later, still says when it happened.
+    at = f" at {when.astimezone(tz).strftime('%I:%M %p').lstrip('0')}"
     if now - when > LATE_NOTICE_AFTER:
-        at = f" at {when.astimezone(tz).strftime('%I:%M %p').lstrip('0')}"
         body = f"{core}{at} (recorded earlier, delivered late)."
     else:
-        at = ""
         body = f"{core} ({school.name})."
     _push_to_guardians(
         tenant_db,
