@@ -3,263 +3,724 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>GuardianPD — School pickup &amp; drop-off attendance</title>
-<meta name="description" content="GuardianPD is a QR-code-based attendance system for school pickup and drop-off, used by school admins, staff, and parents." />
+<title>GuardianPD | School gate arrival and departure alerts</title>
+<meta name="description" content="GuardianPD records every school arrival and departure with a QR card and tells parents instantly by app or SMS, with the exact time. Pupil ID cards with photos, offline scanning and gate station mode." />
+<meta name="theme-color" content="#6A4FE0" />
+<meta property="og:title" content="GuardianPD: know when every child arrives and leaves" />
+<meta property="og:description" content="QR cards for pupils or guardians. Staff scan at the gate, parents are told in seconds by app or SMS." />
+<meta property="og:type" content="website" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 <style>
+  /* Layout concept: a school day told in order. A hero with a live gate scene (phone + parent alert),
+     then the new pupil-card features, how alerts reach parents, how it works, pricing, FAQ. */
   :root {
-    --purple: #6A4FE0;
-    --purple-dark: #4E39B0;
-    --text: #1a1a2e;
-    --muted: #5a5a6e;
-    --bg: #fdfbff;
-    --panel: #f4f2fc;
-    --border: #e6e1f5;
+    --ink: #241f3d;
+    --ink-soft: #5b5578;
+    --brand: #6a4fe0;
+    --brand-deep: #4b34b0;
+    --brand-tint: #ece8fc;
+    --paper: #faf9fd;
+    --panel: #f1eefb;
+    --card: #ffffff;
+    --line: #ddd8f0;
+    --arrive: #17995a;
+    --arrive-tint: #e3f6ec;
+    --leave: #cf7410;
+    --leave-tint: #fdf0df;
+    --on-brand: #ffffff;
+    --hero-bg: #241f3d;
+    --hero-ink: #f3f1ff;
+    --hero-soft: #b9b3d9;
+    --shadow: 0 18px 50px -18px rgba(36, 31, 61, 0.35);
+    --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --gutter: max(20px, env(safe-area-inset-left, 0px));
+    color-scheme: light;
   }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #ece9fb;
+      --ink-soft: #a9a3c9;
+      --brand: #9c86ff;
+      --brand-deep: #b9a8ff;
+      --brand-tint: #2b2550;
+      --paper: #131027;
+      --panel: #1b1736;
+      --card: #211c40;
+      --line: #342d5e;
+      --arrive: #3fd28a;
+      --arrive-tint: #153a2b;
+      --leave: #f0a24a;
+      --leave-tint: #3c2a14;
+      --on-brand: #130f2a;
+      --hero-bg: #0e0b20;
+      --hero-ink: #f3f1ff;
+      --hero-soft: #aaa4cf;
+      --shadow: 0 18px 50px -18px rgba(0, 0, 0, 0.7);
+      color-scheme: dark;
+    }
+  }
+
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
     margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 1.0625rem;
     line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
-  a { color: var(--purple); }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  img, svg { max-width: 100%; }
+  a { color: var(--brand); }
+  a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; border-radius: 6px; }
+  h1, h2, h3 { font-family: var(--font-display); line-height: 1.12; margin: 0; text-wrap: balance; letter-spacing: -0.015em; }
+  p { margin: 0; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding-left: var(--gutter); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+  .eyebrow { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--brand); }
+  .tag-new { display: inline-block; background: var(--arrive); color: #fff; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; vertical-align: middle; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .tag-new { color: #082a1b; } }
 
-  header {
-    border-bottom: 1px solid var(--border);
-    background: var(--bg);
-  }
-  header .wrap {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 24px;
-  }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; }
-  .brand .badge {
-    width: 32px; height: 32px; border-radius: 50%;
-    background: var(--purple); color: #fff;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700;
-  }
-  nav { display: flex; gap: 24px; font-size: 0.92rem; }
-  nav a { color: var(--text); text-decoration: none; }
-  nav a:hover { color: var(--purple); }
-  .nav-cta {
-    background: var(--purple); color: #fff !important;
-    padding: 9px 18px; border-radius: 999px; font-weight: 600;
-  }
-  .nav-cta:hover { background: var(--purple-dark); }
+  /* buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: 600 1rem var(--font-body); text-decoration: none; padding: 14px 26px; border-radius: 12px; border: 2px solid transparent; cursor: pointer; transition: transform .15s ease, background-color .15s ease; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-brand { background: var(--brand); color: var(--on-brand); }
+  .btn-brand:hover { background: var(--brand-deep); }
+  .btn-line { border-color: var(--line); color: var(--ink); background: transparent; }
+  .btn-line:hover { border-color: var(--brand); color: var(--brand); }
+  .btn-on-dark { border-color: rgba(255, 255, 255, 0.28); color: var(--hero-ink); background: transparent; }
+  .btn-on-dark:hover { border-color: #fff; color: #fff; }
+  .btn-hero { background: #fff; color: #241f3d; }
+  .btn-hero:hover { background: var(--brand-tint); }
 
-  .hero { text-align: center; padding: 80px 24px 60px; }
-  .hero h1 { font-size: 2.4rem; margin: 0 0 18px; line-height: 1.2; }
-  .hero p { font-size: 1.1rem; color: var(--muted); max-width: 620px; margin: 0 auto 30px; }
-  .hero-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-  .btn-primary {
-    background: var(--purple); color: #fff; text-decoration: none;
-    padding: 13px 26px; border-radius: 999px; font-weight: 600; font-size: 0.95rem;
+  /* header */
+  .site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-block: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; letter-spacing: -0.02em; }
+  .logo { height: 36px; width: auto; display: block; }
+  .logo-dark { display: none; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .logo-light { display: none; }
+    :root:not([data-theme="light"]) .logo-dark { display: block; }
   }
-  .btn-primary:hover { background: var(--purple-dark); }
-  .btn-secondary {
-    border: 1.5px solid var(--purple); color: var(--purple); text-decoration: none;
-    padding: 13px 26px; border-radius: 999px; font-weight: 600; font-size: 0.95rem;
+  .nav { display: flex; align-items: center; gap: 26px; }
+  .nav a.lnk { color: var(--ink-soft); text-decoration: none; font-weight: 500; font-size: 0.96rem; }
+  .nav a.lnk:hover { color: var(--brand); }
+  .bar .btn { padding: 10px 18px; font-size: 0.93rem; border-radius: 10px; }
+
+  /* hero */
+  .hero { background: var(--hero-bg); color: var(--hero-ink); overflow: hidden; position: relative; }
+  .hero::before { content: ""; position: absolute; inset: 0; background:
+      radial-gradient(900px 420px at 85% 20%, rgba(106, 79, 224, 0.45), transparent 60%),
+      radial-gradient(600px 300px at 0% 100%, rgba(106, 79, 224, 0.25), transparent 60%); pointer-events: none; }
+  .hero-grid { position: relative; display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 40px; align-items: center; padding-block: 72px 80px; }
+  .hero h1 { font-size: clamp(2.4rem, 5.2vw, 4rem); font-weight: 800; letter-spacing: -0.03em; }
+  .hero h1 em { font-style: normal; color: #b7a7ff; }
+  .hero .sub { margin-top: 22px; font-size: 1.18rem; color: var(--hero-soft); max-width: 34em; }
+  .hero .ctas { margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .proofs { margin: 34px 0 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--hero-soft); font-size: 0.92rem; }
+  .proofs li { display: flex; align-items: center; gap: 8px; }
+  .proofs svg { width: 18px; height: 18px; color: #7ee2b0; flex: none; }
+
+  /* hero scene: phone + parent alerts */
+  .scene { position: relative; min-height: 640px; display: flex; justify-content: center; padding-top: 40px; }
+  .phone { align-self: flex-start; width: 292px; background: #0b0918; border-radius: 40px; padding: 11px; box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.65), 0 0 0 1.5px rgba(255, 255, 255, 0.12) inset; position: relative; z-index: 1; }
+  .screen { background: #f6f4ff; border-radius: 30px; overflow: hidden; color: #241f3d; height: 536px; display: flex; flex-direction: column; }
+  .screen .top { background: #6a4fe0; color: #fff; padding: 16px 18px 12px; font-family: var(--font-display); font-weight: 700; font-size: 1rem; display: flex; justify-content: space-between; align-items: center; }
+  .screen .top span { font-family: var(--font-mono); font-size: 0.68rem; background: rgba(255, 255, 255, 0.2); padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+  .viewfinder { height: 150px; background: #19152f; position: relative; display: flex; align-items: center; justify-content: center; }
+  .viewfinder .frame { width: 104px; height: 104px; position: relative; }
+  .viewfinder .frame i { position: absolute; width: 22px; height: 22px; border: 3px solid #8f7cff; }
+  .viewfinder .frame i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 8px; }
+  .viewfinder .frame i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 8px; }
+  .viewfinder .frame i:nth-child(3) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 8px; }
+  .viewfinder .frame i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 8px; }
+  .viewfinder .frame::after { content: ""; position: absolute; left: 8px; right: 8px; height: 2px; background: #7ee2b0; box-shadow: 0 0 12px #7ee2b0; top: 10px; animation: scanline 2.4s ease-in-out infinite; }
+  @keyframes scanline { 0%, 100% { top: 10px; } 50% { top: 90px; } }
+  .viewfinder small { position: absolute; bottom: 8px; color: #b9b3d9; font-size: 0.68rem; font-family: var(--font-mono); }
+  .result { flex: 1; padding: 16px; display: flex; flex-direction: column; justify-content: flex-start; gap: 12px; }
+  .who { display: flex; gap: 12px; align-items: center; background: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 4px 14px -8px rgba(36, 31, 61, 0.35); }
+  .who svg { width: 62px; height: 62px; border-radius: 14px; flex: none; }
+  .who b { display: block; font-family: var(--font-display); font-size: 1.1rem; line-height: 1.15; }
+  .who span { display: block; font-size: 0.78rem; color: #5b5578; }
+  .who .last { margin-top: 4px; font-family: var(--font-mono); font-size: 0.66rem; color: #6a4fe0; }
+  .choose-label { font-size: 0.72rem; color: #5b5578; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
+  .choose { display: grid; gap: 9px; }
+  .choose div { border-radius: 14px; padding: 13px 14px; font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; justify-content: space-between; }
+  .choose .arr { background: #17995a; color: #fff; box-shadow: 0 0 0 3px rgba(23, 153, 90, 0.25); }
+  .choose .lv { background: #fdf0df; color: #8a4d06; border: 1.5px solid #efc690; }
+  .choose svg { width: 18px; height: 18px; }
+  .notif { position: absolute; z-index: 2; background: rgba(255, 255, 255, 0.97); color: #241f3d; border-radius: 16px; padding: 12px 14px; box-shadow: var(--shadow); width: 262px; font-size: 0.86rem; line-height: 1.35; }
+  .notif .app { display: flex; align-items: center; gap: 7px; font-size: 0.72rem; color: #6a4fe0; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.02em; }
+  .notif .app svg { width: 16px; height: 16px; }
+  .notif .app span { margin-left: auto; color: #8a85a3; font-weight: 500; }
+  .notif b { font-weight: 700; }
+  .notif.push { right: -10px; top: -26px; animation: pop .7s .5s both cubic-bezier(.2, .9, .3, 1.2); }
+  .notif.sms { left: -10px; bottom: 6px; background: #e7e3ff; animation: pop .7s 1.1s both cubic-bezier(.2, .9, .3, 1.2); }
+  .notif.sms .app { color: #4b34b0; }
+  @keyframes pop { from { transform: translateY(14px) scale(.94); } to { transform: none; } }
+
+  /* sections */
+  section { padding-block: 88px; }
+  .sec-head { max-width: 46rem; }
+  .sec-head h2 { font-size: clamp(1.9rem, 3.6vw, 2.8rem); font-weight: 800; margin-top: 10px; }
+  .sec-head p { margin-top: 16px; color: var(--ink-soft); font-size: 1.12rem; }
+  .alt { background: var(--panel); }
+
+  /* two ways to run */
+  .ways { margin-top: 44px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; }
+  .way { border-radius: 22px; padding: 32px; background: var(--card); border: 1px solid var(--line); min-width: 0; }
+  .way.feature { background: var(--brand); color: var(--on-brand); border-color: var(--brand); box-shadow: var(--shadow); }
+  .way .tagline { font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: .07em; text-transform: uppercase; opacity: .8; }
+  .way h3 { font-size: 1.55rem; margin-top: 8px; font-weight: 800; }
+  .way p { margin-top: 12px; }
+  .way.feature p, .way.feature .where a { color: var(--on-brand); opacity: .94; }
+  .way ul { list-style: none; margin: 20px 0 0; padding: 0; display: grid; gap: 10px; }
+  .way li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.97rem; }
+  .way li svg { width: 20px; height: 20px; flex: none; margin-top: 3px; }
+  .way:not(.feature) li svg { color: var(--brand); }
+  .way .where { margin-top: 20px; font-size: 0.88rem; opacity: .85; }
+
+  /* pupil cards */
+  .pupil-grid { margin-top: 48px; display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 48px; align-items: start; }
+  .idcard-stage { position: sticky; top: 100px; display: grid; gap: 22px; justify-items: center; }
+  .idcard { width: min(340px, 100%); background: #fff; color: #241f3d; border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid #e6e1f5; }
+  .idcard .head { background: #6a4fe0; color: #fff; padding: 12px 16px; display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; }
+  .idcard .head svg { width: 26px; height: 26px; flex: none; }
+  .idcard .head small { display: block; font-family: var(--font-body); font-weight: 500; font-size: 0.7rem; opacity: .85; }
+  .idcard .body { padding: 18px; display: grid; grid-template-columns: 112px 1fr; gap: 16px; align-items: center; }
+  .idcard .photo svg { width: 112px; height: 132px; border-radius: 12px; display: block; }
+  .idcard .nm { font-family: var(--font-display); font-size: 1.25rem; font-weight: 800; line-height: 1.1; }
+  .idcard .cl { color: #5b5578; font-size: 0.86rem; margin-top: 4px; }
+  .idcard .id { font-family: var(--font-mono); font-size: 0.7rem; color: #6a4fe0; margin-top: 8px; }
+  .idcard .qr { border-top: 1px dashed #d6d0ee; padding: 14px 18px 16px; display: flex; align-items: center; gap: 14px; }
+  .idcard .qr svg { width: 84px; height: 84px; flex: none; }
+  .idcard .qr p { font-size: 0.76rem; color: #5b5578; line-height: 1.4; }
+  .stage-note { font-size: 0.82rem; color: var(--ink-soft); text-align: center; max-width: 24em; }
+  .perks { display: grid; gap: 0; }
+  .perk { display: grid; grid-template-columns: 46px 1fr; gap: 18px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+  .perk:first-child { padding-top: 0; }
+  .perk:last-child { border-bottom: 0; }
+  .perk .ico { width: 46px; height: 46px; border-radius: 13px; background: var(--brand-tint); color: var(--brand); display: grid; place-items: center; }
+  .perk .ico svg { width: 24px; height: 24px; }
+  .perk h3 { font-size: 1.15rem; font-weight: 700; }
+  .perk p { margin-top: 6px; color: var(--ink-soft); font-size: 1rem; }
+  .perk .mono { font-family: var(--font-mono); font-size: 0.86em; background: var(--brand-tint); padding: 1px 6px; border-radius: 6px; color: var(--brand-deep); }
+
+  /* alerts */
+  .alerts { margin-top: 44px; display: grid; grid-template-columns: 1fr 1.1fr 1fr; gap: 18px; align-items: start; }
+  .a-card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 24px; min-width: 0; }
+  .a-card h3 { font-size: 1.1rem; font-weight: 700; }
+  .a-card p { margin-top: 8px; color: var(--ink-soft); font-size: 0.97rem; }
+  .a-card .big { font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); font-weight: 600; margin-bottom: 10px; display: block; }
+  .a-card.mid { background: var(--ink); color: var(--hero-ink); border-color: var(--ink); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .a-card.mid { background: var(--brand-tint); color: var(--ink); border-color: var(--line); } }
+  .a-card.mid p { color: inherit; opacity: .82; }
+  .a-card.mid .big { color: #b7a7ff; }
+  .sms-bubble { margin-top: 14px; background: #e7e3ff; color: #241f3d; border-radius: 16px 16px 16px 4px; padding: 12px 14px; font-size: 0.93rem; max-width: 22em; }
+  .sms-bubble small { display: block; font-family: var(--font-mono); font-size: 0.68rem; color: #5b5578; margin-bottom: 3px; }
+  .flow { margin-top: 14px; display: grid; gap: 8px; font-size: 0.92rem; }
+  .flow div { display: flex; align-items: center; gap: 10px; }
+  .flow i { font-style: normal; font-family: var(--font-mono); font-size: 0.7rem; padding: 3px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); flex: none; }
+
+  /* steps */
+  .steps { margin-top: 48px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; counter-reset: s; border-top: 2px solid var(--ink); }
+  .step { padding: 26px 28px 0 0; position: relative; counter-increment: s; }
+  .step + .step { padding-left: 28px; border-left: 1px solid var(--line); }
+  .step::before { content: "Step " counter(s); font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); font-weight: 600; }
+  .step h3 { margin-top: 10px; font-size: 1.3rem; font-weight: 700; }
+  .step p { margin-top: 10px; color: var(--ink-soft); }
+
+  /* features */
+  .features { margin-top: 44px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .feature { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; min-width: 0; }
+  .feature .ico { width: 40px; height: 40px; border-radius: 11px; background: var(--brand-tint); color: var(--brand); display: grid; place-items: center; margin-bottom: 14px; }
+  .feature .ico svg { width: 22px; height: 22px; }
+  .feature h3 { font-size: 1.08rem; font-weight: 700; }
+  .feature p { margin-top: 8px; color: var(--ink-soft); font-size: 0.97rem; }
+
+  /* roles */
+  .roles { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .role { padding: 26px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); min-width: 0; }
+  .role .letter { width: 42px; height: 42px; border-radius: 50%; background: var(--brand); color: var(--on-brand); font-family: var(--font-display); font-weight: 800; display: grid; place-items: center; margin-bottom: 14px; }
+  .role h3 { font-size: 1.12rem; font-weight: 700; }
+  .role p { margin-top: 6px; color: var(--ink-soft); font-size: 0.97rem; }
+
+  /* pricing */
+  .price-wrap { margin-top: 44px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center; }
+  .price-card { background: var(--card); border: 2px solid var(--brand); border-radius: 24px; padding: 36px; box-shadow: var(--shadow); }
+  .price-card .amt { font-family: var(--font-display); font-weight: 800; font-size: 3.6rem; letter-spacing: -0.03em; line-height: 1; }
+  .price-card .amt small { font-family: var(--font-body); font-size: 1rem; font-weight: 500; color: var(--ink-soft); letter-spacing: 0; }
+  .price-card .for { font-weight: 600; color: var(--ink-soft); margin-bottom: 10px; }
+  .price-card ul { list-style: none; margin: 24px 0; padding: 0; display: grid; gap: 11px; }
+  .price-card li { display: flex; gap: 10px; align-items: flex-start; font-size: 0.99rem; }
+  .price-card li svg { width: 20px; height: 20px; color: var(--arrive); flex: none; margin-top: 3px; }
+  .price-card .btn { width: 100%; }
+  .price-side h3 { font-size: 1.3rem; font-weight: 700; }
+  .price-side p { margin-top: 10px; color: var(--ink-soft); }
+  .price-side .note { margin-top: 18px; padding: 16px 18px; border-radius: 14px; background: var(--brand-tint); font-size: 0.97rem; }
+
+  /* trust */
+  .trust { margin-top: 40px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .trust div { padding-top: 16px; border-top: 2px solid var(--brand); }
+  .trust h3 { font-size: 1.02rem; font-weight: 700; }
+  .trust p { margin-top: 6px; color: var(--ink-soft); font-size: 0.93rem; }
+
+  /* faq */
+  .faq { margin-top: 36px; max-width: 52rem; }
+  details { border-bottom: 1px solid var(--line); padding: 18px 0; }
+  summary { cursor: pointer; font-family: var(--font-display); font-weight: 700; font-size: 1.12rem; list-style: none; display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-family: var(--font-mono); font-size: 1.4rem; color: var(--brand); transition: transform .2s ease; flex: none; }
+  details[open] summary::after { transform: rotate(45deg); }
+  details p { margin-top: 10px; color: var(--ink-soft); max-width: 44em; }
+
+  /* cta band */
+  .cta-band { background: var(--hero-bg); color: var(--hero-ink); padding-block: 72px; position: relative; overflow: hidden; }
+  .cta-band::before { content: ""; position: absolute; inset: 0; background: radial-gradient(700px 260px at 90% 0%, rgba(106, 79, 224, 0.5), transparent 60%); }
+  .cta-in { position: relative; display: flex; flex-wrap: wrap; gap: 28px; justify-content: space-between; align-items: center; }
+  .cta-in h2 { font-size: clamp(1.8rem, 3.4vw, 2.6rem); font-weight: 800; max-width: 22em; }
+  .cta-in p { margin-top: 12px; color: var(--hero-soft); }
+  .cta-in .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+  .mail { font-family: var(--font-mono); font-size: 0.95rem; color: var(--hero-ink); }
+
+  footer { padding-block: 40px 48px; background: var(--paper); }
+  .foot { display: flex; flex-wrap: wrap; gap: 24px; justify-content: space-between; align-items: flex-start; color: var(--ink-soft); font-size: 0.92rem; }
+  .foot .links { display: flex; flex-wrap: wrap; gap: 8px 22px; }
+  .foot a { color: var(--ink-soft); text-decoration: none; }
+  .foot a:hover { color: var(--brand); }
+  .foot .logo { height: 30px; }
+
+  @media (max-width: 980px) {
+    .hero-grid, .pupil-grid, .ways, .price-wrap { grid-template-columns: 1fr; }
+    .hero-grid { padding-block: 52px 56px; }
+    .scene { min-height: 580px; }
+    .idcard-stage { position: static; }
+    .alerts, .features, .roles { grid-template-columns: 1fr 1fr; }
+    .trust { grid-template-columns: 1fr 1fr; }
+    .alerts .a-card.mid { grid-column: 1 / -1; order: -1; }
   }
-  .btn-secondary:hover { background: var(--panel); }
-
-  section { padding: 56px 24px; }
-  section h2 { font-size: 1.6rem; text-align: center; margin: 0 0 8px; }
-  section .lead { text-align: center; color: var(--muted); max-width: 560px; margin: 0 auto 40px; }
-
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; max-width: 1040px; margin: 0 auto; }
-  .step { background: var(--panel); border-radius: 16px; padding: 26px 22px; }
-  .step .num {
-    width: 30px; height: 30px; border-radius: 50%; background: var(--purple); color: #fff;
-    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.9rem; margin-bottom: 14px;
+  @media (max-width: 680px) {
+    section { padding-block: 60px; }
+    .nav a.lnk { display: none; }
+    .alerts, .features, .roles, .trust { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr; border-top: 0; }
+    .step, .step + .step { padding: 22px 0; border-left: 0; border-top: 2px solid var(--ink); }
+    .scene { min-height: 0; padding-bottom: 20px; }
+    .notif.push, .notif.sms { position: relative; right: auto; left: auto; top: auto; bottom: auto; width: min(292px, 100%); margin: 12px 0 0; animation: none; }
+    .scene { flex-direction: column; align-items: center; }
+    .phone { width: min(292px, 100%); }
+    .idcard .body { grid-template-columns: 96px 1fr; }
+    .idcard .photo svg { width: 96px; height: 116px; }
+    .price-card { padding: 26px; }
   }
-  .step h3 { margin: 0 0 8px; font-size: 1.05rem; }
-  .step p { margin: 0; color: var(--muted); font-size: 0.92rem; }
-
-  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1040px; margin: 0 auto; }
-  .feature { padding: 20px; border: 1px solid var(--border); border-radius: 14px; }
-  .feature h3 { margin: 0 0 8px; font-size: 1rem; }
-  .feature p { margin: 0; color: var(--muted); font-size: 0.9rem; }
-
-  .roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1040px; margin: 0 auto; }
-  .role { text-align: center; padding: 24px 18px; }
-  .role .badge {
-    width: 48px; height: 48px; border-radius: 50%; background: var(--panel); color: var(--purple);
-    display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 1.3rem;
-  }
-  .role h3 { margin: 0 0 6px; font-size: 1rem; }
-  .role p { margin: 0; color: var(--muted); font-size: 0.88rem; }
-
-  .pricing-card {
-    max-width: 380px; margin: 0 auto; text-align: center;
-    background: var(--panel); border-radius: 20px; padding: 40px 32px;
-  }
-  .pricing-card .amount { font-size: 2.4rem; font-weight: 700; margin: 6px 0 0; }
-  .pricing-card .amount span { font-size: 1rem; font-weight: 400; color: var(--muted); }
-  .pricing-card ul { list-style: none; padding: 0; margin: 24px 0; text-align: left; font-size: 0.92rem; color: var(--muted); }
-  .pricing-card li { padding: 7px 0; border-bottom: 1px solid var(--border); }
-  .pricing-card li:last-child { border-bottom: none; }
-
-  .contact { text-align: center; }
-  .contact a { font-size: 1.05rem; font-weight: 600; }
-
-  footer {
-    border-top: 1px solid var(--border);
-    padding: 30px 24px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 0.85rem;
-  }
-  footer .links { margin-bottom: 10px; }
-  footer .links a { color: var(--muted); text-decoration: none; margin: 0 10px; }
-  footer .links a:hover { color: var(--purple); }
-
-  @media (max-width: 760px) {
-    nav { display: none; }
-    .steps, .features, .roles { grid-template-columns: 1fr; }
-    .hero h1 { font-size: 1.9rem; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .viewfinder .frame::after, .notif { animation: none; }
+    .btn { transition: none; }
   }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="wrap">
-    <div class="brand"><span class="badge">PD</span> GuardianPD</div>
-    <nav>
-      <a href="#how-it-works">How it works</a>
-      <a href="#features">Features</a>
-      <a href="#pricing">Pricing</a>
-      <a href="#contact">Contact</a>
+<!-- reusable icons -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mark" viewBox="0 0 512 512"><path d="M256 24C206 66 130 82 66 82v164c0 126 84 206 190 250 106-44 190-124 190-250V82c-64 0-140-16-190-58z" fill="#6a4fe0"/><path d="M190 390V252a66 66 0 0 1 132 0v138" fill="none" stroke="#fff" stroke-width="46"/><circle cx="256" cy="332" r="31" fill="#fff"/></symbol>
+    <symbol id="check" viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="arrow-in" viewBox="0 0 24 24"><path d="M4 12h12m0 0l-4.5-4.5M16 12l-4.5 4.5M20 5v14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="arrow-out" viewBox="0 0 24 24"><path d="M20 12H8m0 0l4.5-4.5M8 12l4.5 4.5M4 5v14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="/" aria-label="GuardianPD home"><img class="logo logo-light" src="/logo-light.svg" alt="GuardianPD" width="165" height="36" /><img class="logo logo-dark" src="/logo-dark.svg" alt="GuardianPD" width="165" height="36" /></a>
+    <nav class="nav" aria-label="Main">
+      <a class="lnk" href="#pupil-cards">Pupil cards</a>
+      <a class="lnk" href="#alerts">Alerts</a>
+      <a class="lnk" href="#how-it-works">How it works</a>
+      <a class="lnk" href="#pricing">Pricing</a>
+      <a class="lnk" href="#faq">FAQ</a>
+      <a class="lnk" href="/school-admin/">School login</a>
+      <a class="btn btn-brand" href="/enroll/">Enroll your school</a>
     </nav>
-    <a class="nav-cta" href="/school-admin/">School Admin login</a>
   </div>
 </header>
 
+<main>
+<!-- HERO -->
 <div class="hero">
-  <h1>School pickup and drop-off, verified by QR code</h1>
-  <p>
-    GuardianPD replaces the sign-out clipboard with a secure QR credential
-    for every guardian — school staff scan, the system confirms who's
-    authorized, and parents get notified the moment their child is
-    dropped off or picked up.
-  </p>
-  <div class="hero-ctas">
-    <a class="btn-primary" href="/enroll/">Get GuardianPD for your school</a>
-    <a class="btn-secondary" href="#how-it-works">See how it works</a>
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow" style="color:#b7a7ff">School gate attendance</p>
+      <h1 style="margin-top:14px">Know the minute every child <em>arrives</em> and <em>leaves</em>.</h1>
+      <p class="sub">Pupils carry a QR ID card. Staff scan it at the gate, see the child's photo, and tap one button. Parents are told within seconds, by app or SMS, with the exact time.</p>
+      <div class="ctas">
+        <a class="btn btn-hero" href="/enroll/">Get GuardianPD for your school</a>
+        <a class="btn btn-on-dark" href="#pupil-cards">See pupil cards</a>
+      </div>
+      <ul class="proofs">
+        <li><svg aria-hidden="true"><use href="#check"/></svg>Scans even when the network is down</li>
+        <li><svg aria-hidden="true"><use href="#check"/></svg>App alert, SMS if no app</li>
+        <li><svg aria-hidden="true"><use href="#check"/></svg>Each school's data kept apart</li>
+      </ul>
+    </div>
+
+    <div class="scene" aria-label="Example: staff scanning a pupil card and the parent alerts that follow">
+      <div class="phone">
+        <div class="screen">
+          <div class="top">Scan pupil card <span>STATION</span></div>
+          <div class="viewfinder"><div class="frame"><i></i><i></i><i></i><i></i></div><small>Hold the card inside the frame</small></div>
+          <div class="result">
+            <div class="who">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="#d9d2fb"/><circle cx="32" cy="25" r="11" fill="#f0c9a4"/><path d="M19 20c1-9 9-13 17-11 6 1 9 5 9 11-4-3-8-5-14-5s-9 2-12 5z" fill="#2a2150"/><path d="M10 64c1-14 10-21 22-21s21 7 22 21z" fill="#6a4fe0"/></svg>
+              <div><b>Ada Okafor</b><span>Primary 3 · Greenfield Academy</span><span class="last">Left yesterday 2:05 PM</span></div>
+            </div>
+            <div class="choose-label">Tap what happened</div>
+            <div class="choose">
+              <div class="arr">Arrived at school <svg aria-hidden="true"><use href="#arrow-in"/></svg></div>
+              <div class="lv">Leaving school <svg aria-hidden="true"><use href="#arrow-out"/></svg></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notif push">
+        <div class="app"><svg aria-hidden="true"><use href="#mark"/></svg>GUARDIANPD<span>now</span></div>
+        <b>Ada Okafor arrived at 8:05 AM</b> (Greenfield Academy).
+      </div>
+      <div class="notif sms">
+        <div class="app">SMS from GuardianPD<span>8:05 AM</span></div>
+        Ada Okafor arrived at 8:05 AM. - Greenfield Academy
+      </div>
+    </div>
   </div>
 </div>
 
-<section id="how-it-works">
-  <h2>How it works</h2>
-  <p class="lead">Three roles, one shared record of who picked up which child, and when.</p>
-  <div class="steps">
-    <div class="step">
-      <div class="num">1</div>
-      <h3>Enroll guardians and children</h3>
-      <p>The School Admin adds each guardian and their children — on the mobile app, or in bulk on the web console. A signed QR credential is generated automatically.</p>
+<!-- TWO WAYS -->
+<section id="ways">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Choose how your gate works</p>
+      <h2>One platform, two card systems</h2>
+      <p>Private schools usually hand children to a named adult. Public schools often have children walking in alone. GuardianPD supports both, set per school.</p>
     </div>
-    <div class="step">
-      <div class="num">2</div>
-      <h3>Print or share the credential</h3>
-      <p>Print the guardian's QR credential from the office, or share it directly — it shows the guardian's name and their children, ready for the car line or gate.</p>
-    </div>
-    <div class="step">
-      <div class="num">3</div>
-      <h3>Scan at drop-off and pick-up</h3>
-      <p>School Staff scan the code with their phone. GuardianPD checks the guardian is actually authorized for that child before recording the event — and alerts real guardians if it isn't.</p>
-    </div>
-  </div>
-</section>
-
-<section id="features" style="background: var(--panel);">
-  <h2>Built for a real school gate</h2>
-  <p class="lead">Not just a QR scanner — a system that checks authorization every time.</p>
-  <div class="features">
-    <div class="feature">
-      <h3>Authorization, not just validity</h3>
-      <p>Every scan is checked against exactly who's allowed to collect that specific child, not just whether the code is real.</p>
-    </div>
-    <div class="feature">
-      <h3>Real-time guardian alerts</h3>
-      <p>Every guardian linked to a child gets notified on drop-off and pick-up — including if an unrecognized code is scanned for their child.</p>
-    </div>
-    <div class="feature">
-      <h3>Missed-attendance emails</h3>
-      <p>Schools set daily drop-off and pick-up cutoff times; GuardianPD emails guardians automatically if a child hasn't been signed in or out.</p>
-    </div>
-    <div class="feature">
-      <h3>Mobile app for staff and parents</h3>
-      <p>School Staff scan from their phone; guardians see live pickup/drop-off history for every child linked to them.</p>
-    </div>
-    <div class="feature">
-      <h3>Web console for bulk enrollment</h3>
-      <p>Adding guardians and children for a whole class is faster on a keyboard — the web console covers that, plus reprinting credentials.</p>
-    </div>
-    <div class="feature">
-      <h3>Printed credentials, no app required for guardians</h3>
-      <p>A guardian doesn't need a smartphone to be picked up correctly — a printed QR credential works at the gate either way.</p>
+    <div class="ways">
+      <div class="way feature">
+        <span class="tagline">New · Pupil cards</span>
+        <h3>Each pupil carries their own card</h3>
+        <p>Built for schools where children travel on their own. The card shows the pupil's photo, and every scan is recorded as an arrival or a departure.</p>
+        <ul>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Photo ID card with a signed QR code</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Staff confirm the face, then tap Arrived or Leaving</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Every linked parent is alerted with the time</li>
+        </ul>
+        <p class="where"><a href="#pupil-cards" style="color:inherit;font-weight:700">See every pupil-card feature</a></p>
+      </div>
+      <div class="way">
+        <span class="tagline">Guardian cards</span>
+        <h3>Each guardian carries a card</h3>
+        <p>Built for pickup lines. A guardian shows their QR credential and GuardianPD checks they are allowed to collect that specific child.</p>
+        <ul>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Authorization checked on every scan</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Unknown cards flagged, real guardians alerted</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Printed card works without a smartphone</li>
+        </ul>
+      </div>
     </div>
   </div>
 </section>
 
-<section id="roles">
-  <h2>Who uses GuardianPD</h2>
-  <div class="roles">
-    <div class="role">
-      <div class="badge">A</div>
-      <h3>School Admin</h3>
-      <p>Enrolls guardians and children, manages staff accounts, prints QR credentials.</p>
+<!-- PUPIL CARDS -->
+<section id="pupil-cards" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Pupil mode</p>
+      <h2>Pupil ID cards, <span class="tag-new">new</span> built for a busy gate</h2>
+      <p>Everything a school office and a gate team need to run on pupil cards from the first morning.</p>
     </div>
-    <div class="role">
-      <div class="badge">S</div>
-      <h3>School Staff</h3>
-      <p>A focused, single-purpose screen: scan a guardian's QR code at drop-off or pick-up.</p>
-    </div>
-    <div class="role">
-      <div class="badge">G</div>
-      <h3>Guardian</h3>
-      <p>Gets notified every time their child is signed in or out, by whom, and when.</p>
+    <div class="pupil-grid">
+      <div class="idcard-stage">
+        <div class="idcard" aria-label="Sample pupil ID card">
+          <div class="head"><svg aria-hidden="true"><use href="#mark"/></svg><div>Greenfield Academy<small>Pupil ID card</small></div></div>
+          <div class="body">
+            <div class="photo"><svg viewBox="0 0 112 132" aria-hidden="true"><rect width="112" height="132" fill="#d9d2fb"/><circle cx="56" cy="52" r="22" fill="#f0c9a4"/><path d="M33 44c2-18 18-26 34-22 12 3 18 11 18 22-8-6-16-10-28-10s-18 4-24 10z" fill="#2a2150"/><path d="M14 132c2-28 20-42 42-42s40 14 42 42z" fill="#6a4fe0"/></svg></div>
+            <div><div class="nm">Ada Okafor</div><div class="cl">Primary 3</div><div class="id">PUPIL CARD · SAMPLE</div></div>
+          </div>
+          <div class="qr">
+            <svg id="qr" viewBox="0 0 21 21" shape-rendering="crispEdges" aria-hidden="true"></svg>
+            <p>Scan at the gate on arrival and when leaving. Lost card? The school reissues it and the old one stops working.</p>
+          </div>
+        </div>
+        <p class="stage-note">Sample card for illustration. Real cards print with the school's name and the pupil's own photo.</p>
+      </div>
+
+      <div class="perks">
+        <div class="perk">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="9" cy="11" r="2.2"/><path d="M5.5 16c.6-2 2-3 3.5-3s2.9 1 3.5 3M15 10h4M15 13.5h3"/></svg></div>
+          <div><h3>Photo on every card</h3><p>Upload one photo at a time or a whole folder at once. The photo prints on the card and shows on the scanner, so staff see whether the face matches.</p></div>
+        </div>
+        <div class="perk">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 4H5v3M16 4h3v3M8 20H5v-3M16 20h3v-3"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg></div>
+          <div><h3>Scan, then choose</h3><p>The scanner never guesses. It shows the pupil, then staff tap <span class="mono">Arrived at school</span> or <span class="mono">Leaving school</span>. A wrong tap is fixed by tapping the other button.</p></div>
+        </div>
+        <div class="perk">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <div><h3>The time is in every alert</h3><p>Parents read "Ada arrived at 8:05 AM", not just "Ada arrived". If a scan was saved offline and delivered later, the alert says so.</p></div>
+        </div>
+        <div class="perk">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><path d="M4 4l16 16"/></svg></div>
+          <div><h3>Offline scanning</h3><p>The scanner keeps the pupil list and photos on the phone. If the network drops, scans are saved with their real time and sent as soon as it returns.</p></div>
+        </div>
+        <div class="perk">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><circle cx="12" cy="9" r="2"/><path d="M9.5 15.5h5M11 18h2"/></svg></div>
+          <div><h3>Gate station mode</h3><p>Leave a phone at the gate on its front camera with an on-screen frame guide. A PIN stops anyone leaving the scanner screen.</p></div>
+        </div>
+        <div class="perk">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg></div>
+          <div><h3>Bulk setup from a spreadsheet</h3><p>Import a whole class list from CSV, upload photos in bulk, then print every card as one PDF. Reissue a single card when one is lost.</p></div>
+        </div>
+        <div class="perk">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+          <div><h3>Attendance report</h3><p>The School Admin console lists who arrived and left, when, and who scanned them. Download it as CSV for the register.</p></div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
-<section id="pricing" style="background: var(--panel);">
-  <h2>Simple, per-child pricing</h2>
-  <p class="lead">One rate, billed automatically every 30 days based on enrolled children.</p>
-  <div class="pricing-card">
-    <div>Per enrolled child</div>
-    <div class="amount">₦500 <span>/ 30 days</span></div>
-    <ul>
-      <li>Unlimited guardians and staff accounts</li>
-      <li>Unlimited scans and notifications</li>
-      <li>Web console + mobile app included</li>
-      <li>Cancel or pause anytime</li>
-    </ul>
-    <a class="btn-primary" href="/enroll/">Enroll your school</a>
+<!-- ALERTS -->
+<section id="alerts">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Reaching parents</p>
+      <h2>Every parent is reached, with or without the app</h2>
+      <p>GuardianPD tries the app first. If a parent has no app installed and the school has switched on SMS, the same message goes to their phone number.</p>
+    </div>
+    <div class="alerts">
+      <div class="a-card">
+        <span class="big">1 · App push</span>
+        <h3>Instant notification</h3>
+        <p>Parents with the GuardianPD app get a push alert on Android or iPhone and can see each child's history.</p>
+      </div>
+      <div class="a-card mid">
+        <span class="big">The rule</span>
+        <h3>App first, SMS as the fallback</h3>
+        <div class="flow">
+          <div><i>App</i> Parent has the app: push alert</div>
+          <div><i>SMS</i> No app, phone number on file: text message</div>
+          <div><i>Log</i> Always saved in the school's record</div>
+        </div>
+        <div class="sms-bubble"><small>SMS · GuardianPD</small>Ada Okafor arrived at 8:05 AM. - Greenfield Academy</div>
+      </div>
+      <div class="a-card">
+        <span class="big">2 · SMS</span>
+        <h3>Optional, billed by usage</h3>
+        <p>Schools turn SMS on when they want it. It is sent under the approved sender name GuardianPD and counted on the monthly invoice.</p>
+      </div>
+    </div>
   </div>
 </section>
 
-<section id="contact" class="contact">
-  <h2>Get in touch</h2>
-  <p class="lead">Want GuardianPD at your school, or have a question about an existing account?</p>
-  <a href="mailto:info@de-ronimak.com">info@de-ronimak.com</a>
+<!-- HOW IT WORKS -->
+<section id="how-it-works" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">How it works</p>
+      <h2>From class list to first scan in an afternoon</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <h3>Add pupils and parents</h3>
+        <p>Import a CSV or add families one by one in the web console or the mobile app. Add photos. Each pupil is linked to every parent who should hear about them.</p>
+      </div>
+      <div class="step">
+        <h3>Print the cards</h3>
+        <p>Print a single card or the whole school as one PDF. Guardian-mode schools print guardian QR cards the same way.</p>
+      </div>
+      <div class="step">
+        <h3>Scan at the gate</h3>
+        <p>Staff scan with the GuardianPD app. The record is saved and parents are alerted in seconds, even if the signal drops and returns later.</p>
+      </div>
+    </div>
+  </div>
 </section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">In every school</p>
+      <h2>Built for a real school gate</h2>
+      <p>These work in both pupil mode and guardian mode.</p>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/><path d="M9 12l2.2 2.2L15.5 10"/></svg></div>
+        <h3>Authorization, not just validity</h3>
+        <p>A real QR code is not enough. In guardian mode every scan is checked against who may collect that specific child.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg></div>
+        <h3>Unknown cards raise an alert</h3>
+        <p>If someone scans a card that does not belong to the child, the event is flagged and the real guardians are told.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 8l9 6 9-6"/></svg></div>
+        <h3>Missed-attendance emails</h3>
+        <p>Schools set drop-off and pick-up cutoff times. If a child has not been recorded and no absence was reported, the school is emailed.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg></div>
+        <h3>Apps for staff and parents</h3>
+        <p>Android and iPhone. Staff get a focused scanner. Parents see arrivals, departures and can report a planned absence.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <h3>School Admin web console</h3>
+        <p>Enroll families, import lists, upload photos, print cards and read attendance from any computer, no install.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V7a6 6 0 0 1 12 0v2"/><rect x="4" y="9" width="16" height="12" rx="2.5"/><path d="M12 14v3"/></svg></div>
+        <h3>Private by design</h3>
+        <p>Each school's records live in their own database. A lost card is revoked and reissued in one click.</p>
+      </div>
+    </div>
+
+    <div class="sec-head" style="margin-top:80px">
+      <p class="eyebrow">Who uses it</p>
+      <h2>One system, three people</h2>
+    </div>
+    <div class="roles">
+      <div class="role"><div class="letter">A</div><h3>School admin</h3><p>Enrolls families, imports pupils, prints cards, manages staff accounts and sees attendance.</p></div>
+      <div class="role"><div class="letter">S</div><h3>Gate staff</h3><p>A single focused screen: scan, check the photo, tap Arrived or Leaving.</p></div>
+      <div class="role"><div class="letter">P</div><h3>Parent</h3><p>Hears about every arrival and departure, with the time, by app or SMS.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section id="pricing" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Pricing</p>
+      <h2>One rate per enrolled child</h2>
+      <p>Billed automatically every 30 days, based on the children enrolled.</p>
+    </div>
+    <div class="price-wrap">
+      <div class="price-card">
+        <div class="for">Per enrolled child</div>
+        <div class="amt">₦500 <small>/ 30 days</small></div>
+        <ul>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Unlimited guardians and staff accounts</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Unlimited scans and app notifications</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Pupil cards, guardian cards, offline scanning</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Web console and mobile apps included</li>
+          <li><svg aria-hidden="true"><use href="#check"/></svg>Pay online by card</li>
+        </ul>
+        <a class="btn btn-brand" href="/enroll/">Enroll your school</a>
+      </div>
+      <div class="price-side">
+        <h3>What about SMS?</h3>
+        <p>SMS alerts to parents without the app are optional. If your school turns them on, each message sent is shown as its own line on the invoice at a rate agreed with your school.</p>
+        <div class="note">Parents with the app are never charged an SMS, because they receive a push alert instead.</div>
+        <p style="margin-top:18px">Pilot schools and public-school programmes can write to us for a tailored proposal.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Trust</p>
+      <h2>Designed so a card cannot be faked</h2>
+    </div>
+    <div class="trust">
+      <div><h3>Signed QR codes</h3><p>Each code carries a cryptographic signature. Edited or invented codes are rejected.</p></div>
+      <div><h3>Revocable</h3><p>Lost or stolen? Reissue the card and the old one stops working at once.</p></div>
+      <div><h3>Separate data</h3><p>Every school has its own database. One school's records are never mixed with another's.</p></div>
+      <div><h3>Audit trail</h3><p>Changes in the console are logged, and every scan records who scanned it and when.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" class="alt">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Questions</p>
+      <h2>What schools ask us</h2>
+    </div>
+    <div class="faq">
+      <details><summary>Do pupils or parents need a smartphone?</summary><p>No. Pupils carry a printed card. Parents without the app can receive SMS alerts if the school turns them on. Only the staff scanning at the gate need a phone with the app.</p></details>
+      <details><summary>What happens when the network is down?</summary><p>The scanner keeps the pupil list on the phone and saves scans with their real time. When the network returns, the scans upload and parents are told, with a note that the record was saved earlier.</p></details>
+      <details><summary>What if a pupil forgets or loses their card?</summary><p>The school admin reissues a card from the web console. The old card is cancelled immediately and a new one can be printed straight away.</p></details>
+      <details><summary>Can staff fix a wrong tap?</summary><p>Yes. Scan again and tap the other button. GuardianPD ignores an accidental double scan of the same type within about a minute and a half.</p></details>
+      <details><summary>How do we load hundreds of pupils?</summary><p>Import a CSV class list, upload photos in bulk, then print all cards as a single PDF. Families can also be added one at a time on the web console or the mobile app.</p></details>
+      <details><summary>Which phones does the scanner run on?</summary><p>Android phones and iPhones. A phone can be left at the gate in station mode, using its front camera, locked with a PIN.</p></details>
+      <details><summary>Can we try it before enrolling every pupil?</summary><p>Yes. Many schools start with one class or one gate. Send us a message and we will help you plan a pilot.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-band">
+  <div class="wrap cta-in">
+    <div>
+      <h2>Bring GuardianPD to your school gate</h2>
+      <p>Tell us about your school and we will set up your account. Questions: <span class="mail">info@de-ronimak.com</span></p>
+    </div>
+    <div class="ctas">
+      <a class="btn btn-hero" href="/enroll/">Enroll your school</a>
+      <a class="btn btn-on-dark" href="mailto:info@de-ronimak.com">Email us</a>
+    </div>
+  </div>
+</div>
+</main>
 
 <footer>
-  <div class="links">
-    <a href="/privacy/">Privacy policy</a>
-    <a href="/terms/">Terms of service</a>
-    <a href="/refund/">Refund policy</a>
-    <a href="/delete-account/">Delete my account</a>
-    <a href="/school-admin/">School Admin login</a>
+  <div class="wrap foot">
+    <div>
+      <a class="brand" href="/" aria-label="GuardianPD home"><img class="logo logo-light" src="/logo-light.svg" alt="GuardianPD" width="165" height="36" /><img class="logo logo-dark" src="/logo-dark.svg" alt="GuardianPD" width="165" height="36" /></a>
+      <p style="margin-top:10px">School gate arrival and departure alerts.<br />A product of De-Ronimak Nigeria Limited.</p>
+    </div>
+    <div class="links">
+      <a href="/privacy/">Privacy policy</a>
+      <a href="/terms/">Terms of service</a>
+      <a href="/refund/">Refund policy</a>
+      <a href="/delete-account/">Delete my account</a>
+      <a href="/school-admin/">School Admin login</a>
+    </div>
   </div>
-  GuardianPD — School pickup/drop-off attendance system.
 </footer>
 
+<script>
+  // Sample QR pattern for the illustration card (decorative, not a working code).
+  (function () {
+    var svg = document.getElementById("qr");
+    if (!svg) return;
+    var n = 21, seed = 7, out = "";
+    function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    function finder(x, y) {
+      out += '<rect x="' + x + '" y="' + y + '" width="7" height="7" fill="#241f3d"/>' +
+             '<rect x="' + (x + 1) + '" y="' + (y + 1) + '" width="5" height="5" fill="#fff"/>' +
+             '<rect x="' + (x + 2) + '" y="' + (y + 2) + '" width="3" height="3" fill="#241f3d"/>';
+    }
+    out += '<rect width="21" height="21" fill="#fff"/>';
+    for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) {
+      var inFinder = (x < 8 && y < 8) || (x > 12 && y < 8) || (x < 8 && y > 12);
+      if (!inFinder && rnd() > 0.52) out += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="#241f3d"/>';
+    }
+    finder(0, 0); finder(14, 0); finder(0, 14);
+    svg.innerHTML = out;
+  })();
+</script>
 </body>
 </html>
